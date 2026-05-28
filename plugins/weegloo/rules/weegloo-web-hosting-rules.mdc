@@ -26,6 +26,7 @@ rules:
       - **Weegloo WebHosting** serves a **static ZIP** (e.g. Next `output: 'export'` → `out/`). There is **no Node process** reading `.env` per request at runtime on Weegloo.
       - **`.env.local` / `.env.example` / `NEXT_PUBLIC_*`** (and similar) apply at **build time** on the developer or CI machine when values are inlined into the client bundle. Document the project’s real variable names in **`.env.example`** and README.
       - How Space-specific or deploy-specific values reach the browser is **project-defined** (separate builds per Space, build args, or other patterns). Do **not** assume a platform-provided runtime env file on WebHosting.
+      - **MarketApp packaging — special build-time rules apply; consult `weegloo-marketapp-packaging`.** If this WebHosting *may ever* be packaged into a **MarketApp AppBundle**, the source Space's `sys.id`, `DeliveryAccessToken`, and any other resource `sys.id`s the client code references must be inlined into the build output as **verbatim, intact literal strings** — do **not** use placeholder syntax (`{{spaceId}}`, `__TOKEN__`, etc.), do **not** hide them behind env-var indirection or runtime concatenation, do **not** leave them blank as "the author's Space shouldn't be hard-coded". The instinct to abstract these values is wrong here; the correct build-time pattern is to **inline literals directly into the build output**. These rules do not apply to direct-deploy (non-MarketApp) WebHostings.
 
   - section: Packaging Requirements
     items:
