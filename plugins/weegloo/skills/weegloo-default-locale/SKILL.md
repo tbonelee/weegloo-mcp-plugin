@@ -124,3 +124,5 @@ The canonical source for “this field has content” remains **default locale +
 - **ContentType field design (`localized`, types, validations):** `weegloo-create-content-type` skill.
 - **HTTP / Swagger:** `weegloo-api-endpoints` rule (locale in `fields.*` paths and query params).
 - **CDA shows published content only:** **`weegloo-cda-publish`** skill.
+
+<!-- ci-manifest-test-marker -->
