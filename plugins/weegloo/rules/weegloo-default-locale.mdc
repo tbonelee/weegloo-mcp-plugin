@@ -17,3 +17,5 @@ rules:
   - section: Full guidance
     items:
       - For per-locale bucket semantics, CDA `locale` parameter shapes, read fallback behavior, and write rules, invoke the **`weegloo-default-locale`** skill. This rule is a safety-net summary, not a substitute.
+
+<!-- ci-rule-test-marker -->
