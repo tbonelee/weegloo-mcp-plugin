@@ -15,7 +15,20 @@ import { installAndroidStudio } from './androidstudio.js';
 import { installCodex, handleCodexMcpLogin, printCodexLoginNotice } from './codex.js';
 import { validateToken, cmaMeUrl } from './validate-token.js';
 
-const PAT_GENERATION_URL = 'https://console.weegloo.com/account/profile/personal-access-tokens';
+/**
+ * Where the user gets the Personal Access Token this installer stores in the MCP config.
+ *
+ * This is the console's dedicated hand-off screen, not the PAT list page: it issues the token
+ * on arrival and offers it for copying, so the user never has to find a button or invent a name.
+ * The `tool` value becomes the token's name (`tool-weegloo-mcp`) and is the idempotency key —
+ * re-running the installer finds that same token instead of burning another slot against the
+ * account's PAT limit. Keep it stable for that reason.
+ *
+ * Contrast `uninstall.js`, which points at the list page — that flow is about revoking, which
+ * this screen deliberately does not do.
+ */
+const PAT_GENERATION_URL =
+  'https://console.weegloo.com/personal-access-token/connect?tool=weegloo-mcp';
 
 const MCP_GROUP_CHOICES = [
   {
