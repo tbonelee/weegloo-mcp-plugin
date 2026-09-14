@@ -15,8 +15,7 @@ that `ServiceLogin` needs. Everything else (the `auth.weegloo.com` wire protocol
 > **`weegloo-service-login-client`** (the spine). This skill does **not** decide whether to use Google —
 > the provider must already be chosen from the product's actual need. **Do not use this for a
 > non-Google provider** (other providers follow the same *shape*, but their console steps differ —
-> GitHub, Kakao, Naver, and LINE have their own dedicated skills; Facebook and GitLab ride the spine's
-> generic shape — see *Configuration responsibilities* in the spine).
+> GitHub, Facebook, GitLab, Kakao, Naver, and LINE have their own dedicated skills).
 
 ## Google's redirect URI (deploy-independent — register it now)
 
@@ -44,7 +43,13 @@ FRONT*).
 
 The `clientId` / `clientSecret` come from the user's **own Google Cloud OAuth client** and only the user
 can produce them. So when you reach this step, **stop and ask** — and **don't ask bare**. Hand the user
-this step-by-step walkthrough, with the real `{spaceId}` already filled into the redirect URI above:
+the illustrated walkthrough, which carries a screenshot of every step below:
+
+```diff
++ https://docs.weegloo.com/getting-started/core-concepts/service-users/service-login/google
+```
+
+Then summarize it inline, with the real `{spaceId}` already filled into the redirect URI above:
 
 1. Go to the **Google Cloud Console → OAuth clients** page (create or select a project first):
    **https://console.cloud.google.com/auth/clients** . Hand the user that link — it drops them
@@ -76,4 +81,5 @@ end the turn by *asking for the credentials*, not by reporting Google sign-in as
 
 - **Provider-agnostic spine (wire protocol, SDK, `callbackUrl`, pitfalls):** **`weegloo-service-login-client`**.
 - **Conceptual model (ServiceLogin / ServiceUserRole / ServiceUser):** **`weegloo-service-login`**.
+- **Other dedicated provider skills:** **`weegloo-service-login-github`** (GitHub), **`weegloo-service-login-facebook`** (Facebook), **`weegloo-service-login-gitlab`** (GitLab), **`weegloo-service-login-kakao`** (Kakao), **`weegloo-service-login-naver`** (Naver), **`weegloo-service-login-line`** (LINE).
 - **Picking the API combo per service type:** **`weegloo-service-architecture`**.

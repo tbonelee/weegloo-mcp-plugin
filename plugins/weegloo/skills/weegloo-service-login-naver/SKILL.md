@@ -15,8 +15,7 @@ that `ServiceLogin` needs. Everything else (the `auth.weegloo.com` wire protocol
 > **`weegloo-service-login-client`** (the spine). This skill does **not** decide whether to use Naver —
 > the provider must already be chosen from the product's actual need. **Do not use this for a
 > non-Naver provider** (other providers follow the same *shape*, but their console steps differ —
-> Google, GitHub, Kakao, and LINE have their own dedicated skills; Facebook and GitLab ride the spine's
-> generic shape).
+> Google, GitHub, Facebook, GitLab, Kakao, and LINE have their own dedicated skills).
 
 > **Console language.** Naver Developers has **no English localization** — its console and docs are
 > Korean-only. The steps below name each field by its **English meaning**; the live console shows the
@@ -48,7 +47,13 @@ FRONT*).
 
 The `clientId` / `clientSecret` come from the user's **own Naver Developers application** and only the
 user can produce them. So when you reach this step, **stop and ask** — and **don't ask bare**. Hand the
-user this step-by-step walkthrough, with the real `{spaceId}` already filled into the Callback URL above:
+user the illustrated walkthrough, which carries a screenshot of every step below:
+
+```diff
++ https://docs.weegloo.com/getting-started/core-concepts/service-users/service-login/naver
+```
+
+Then summarize it inline, with the real `{spaceId}` already filled into the Callback URL above:
 
 1. Go to **Naver Developers → Application → Register Application**. Give the user **this menu path** —
    it is the durable anchor. If you also want to hand them a clickable link, **find the current one at
@@ -96,5 +101,5 @@ Practical consequences:
 
 - **Provider-agnostic spine (wire protocol, SDK, `callbackUrl`, pitfalls):** **`weegloo-service-login-client`**.
 - **Conceptual model (ServiceLogin / ServiceUserRole / ServiceUser):** **`weegloo-service-login`**.
-- **Other dedicated provider skills:** **`weegloo-service-login-google`** (Google), **`weegloo-service-login-github`** (GitHub), **`weegloo-service-login-kakao`** (Kakao), **`weegloo-service-login-line`** (LINE).
+- **Other dedicated provider skills:** **`weegloo-service-login-google`** (Google), **`weegloo-service-login-github`** (GitHub), **`weegloo-service-login-facebook`** (Facebook), **`weegloo-service-login-gitlab`** (GitLab), **`weegloo-service-login-kakao`** (Kakao), **`weegloo-service-login-line`** (LINE).
 - **Picking the API combo per service type:** **`weegloo-service-architecture`**.
