@@ -1,6 +1,6 @@
 ---
 name: weegloo-send-email
-description: Make a product SEND EMAIL on Weegloo — notifications, receipts, verification codes, digests, contact-form forwarding, password-style one-time links. Covers the two pieces (an EmailAccount SMTP sender registered in the Space + a Script's EmailSend) and, above all, WHICH SMTP vendor to use — if the user has NOT named an email service or SMTP vendor, do not ask which one and do not invent one — use GOOGLE (Gmail SMTP) and ask the user for exactly two values, a Google App Password created at https://myaccount.google.com/apppasswords and the Google address that App Password belongs to (never an arbitrary or made-up address) — those two being the ONLY input, since the endpoint is fixed at smtp.gmail.com/587/StartTls, username and fromAddress are both that same address verbatim, and fromName/name are derived from the product rather than asked — while telling them to say so if they would rather use a different SMTP. Also covers the Gmail From-address rewrite, that creating an EmailAccount is NOT inert (Weegloo actually delivers a test message before storing anything), immutable endpoint/username/password (rotation = recreate), preset vendors vs custom SMTP by plan, and that Update is REST-only, not an MCP tool. Use when a product must send mail, when picking or changing an SMTP sender, or before authoring a Script that sends mail. English only.
+description: Make a product SEND EMAIL on Weegloo — notifications, receipts, verification codes, digests, contact-form forwarding, password-style one-time links. Covers the two pieces (an EmailAccount SMTP sender registered in the Space + a Script's EmailSend) and, above all, WHICH SMTP vendor to use — if the user has NOT named an email service or SMTP vendor, do not ask which one and do not invent one — use GOOGLE (Gmail SMTP) and ask the user for exactly two values, a Google App Password created at https://myaccount.google.com/apppasswords and the Google address that App Password belongs to (never an arbitrary or made-up address) — those two being the ONLY input, since the endpoint is fixed at smtp.gmail.com/587/StartTls, username and fromAddress are both that same address verbatim, and fromName/name are derived from the product rather than asked — while telling them to say so if they would rather use a different SMTP. Also covers the Gmail From-address rewrite, that creating an EmailAccount is NOT inert (Weegloo actually delivers a test message before storing anything), immutable endpoint/username/password (rotation = recreate), preset vendors vs custom SMTP by plan, and — when the user DID name one of the other presets — exactly what `username` / `password` / `fromAddress` are for Naver, Resend and Brevo (Resend's username is the literal string `resend`; Brevo wants its SMTP key, not its API key, under a Brevo-issued `@smtp-brevo.com` login), what has to be verified on the vendor's side before a create can succeed at all, and the click-by-click walkthrough page to hand the user for each, and that Update is REST-only, not an MCP tool. Use when a product must send mail, when picking or changing an SMTP sender, or before authoring a Script that sends mail. English only.
 ---
 
 # Weegloo — sending email from a Space
@@ -124,6 +124,53 @@ outright (`WGL422069`).
   value, and note that **every attempt tries a real send**.
 - A create that fails leaves **no** resource behind, so there is nothing to clean up.
 
+## If the user named Naver, Resend, or Brevo
+
+Google stays the default when nobody names a vendor — you are here only because the user named one of
+the other three presets (all registrable on every plan). The division of labour is unchanged: **you type
+the endpoint, the user produces the credentials.** Two things differ per vendor, and both are where this
+goes wrong — what `username` actually is, and what has to be true on the vendor's side first. **Get the
+prerequisite done before you call create**: create delivers a real message, so an unverified sending
+identity fails the create itself, not some later send.
+
+| Vendor | `endpoint` — you type it | `username` | `password` | `fromAddress` |
+|---|---|---|---|---|
+| **Gmail** | `smtp.gmail.com` / `587` / `StartTls` | the Google address | the 16-character App Password | the same address, verbatim |
+| **Naver** | `smtp.naver.com` / `587` / `StartTls` | the Naver **ID alone** authenticates; the full address also works | the application password | the `@naver.com` address |
+| **Resend** | `smtp.resend.com` / `587` / `StartTls` | the literal string **`resend`** — identical for every Resend user, not a credential | the API key | **any** address at the verified domain; no mailbox has to exist |
+| **Brevo** | `smtp-relay.brevo.com` / `587` / `StartTls` | the Brevo-issued address ending **`@smtp-brevo.com`**, shown as `Login` under **Your SMTP Settings** | the **SMTP key** | a confirmed sender, or any address at an authenticated domain |
+
+`fromName` and `name` stay yours to write on all four, exactly as on the Google default.
+
+### Hand the user the walkthrough instead of narrating the vendor's console
+
+Each page below is a click-by-click guide with screenshots. Give the link, name the prerequisite, and
+ask only for the values in the table above.
+
+- **Gmail** — 2-step verification on, then an App Password.
+  https://docs.weegloo.com/getting-started/core-concepts/deployment-and-integration/email/gmail
+- **Naver** — POP3/SMTP switched on **and** 2-step verification on, then an application password.
+  https://docs.weegloo.com/getting-started/core-concepts/deployment-and-integration/email/naver
+- **Resend** — a domain registered and **verified** by DNS records. Without one Resend sends nothing at
+  all, so there is no "try it without a domain first" path to offer. Scope the key to **Sending access**
+  rather than full access: it is stored in the Space and used indefinitely.
+  https://docs.weegloo.com/getting-started/core-concepts/deployment-and-integration/email/resend
+- **Brevo** — the sending identity confirmed (a domain authenticated, or that one address confirmed with
+  the code Brevo mails to it) **and** a phone number verified on the account, which Brevo demands before
+  it will issue any key at all.
+  https://docs.weegloo.com/getting-started/core-concepts/deployment-and-integration/email/brevo
+
+### Three traps that burn a create
+
+- **Brevo issues an API key *and* an SMTP key, and only the SMTP key authenticates SMTP.** Putting the
+  API key in `password` fails the create. Brevo keys also expire after **90 days of inactivity**, so a
+  sender that has been quiet for a quarter stops working and has to be recreated.
+- **Resend's `username` is the word `resend`.** Users read that field as "my account" and supply an
+  address; the create then fails on authentication. Say plainly that this one value is the same for
+  everyone.
+- **Naver's `fromAddress` is the account's own address.** Naver is not a domain-sending vendor like
+  Resend or Brevo — there is no "any address you like" here.
+
 ## Fixed at creation — plan for recreate, not edit
 
 | Field | After create |
@@ -152,9 +199,10 @@ deleting the old one.** Do not offer the user an in-place credential change. Rep
 
 ## Fields
 
-`name` (label, 1–64 — **not** the From display name) · `endpoint` = `{ host, port, security }` (presets
-listen on **587 / STARTTLS** and **465 / implicit TLS**; a self-hosted server may differ) · `username`
-(SMTP AUTH, provider-defined, often not an email address — on Gmail it **is** the address) · `password`
+`name` (label, 1–64 — **not** the From display name) · `endpoint` = `{ host, port, security }` (every
+preset listens on **587 / STARTTLS**, and all but **Naver** also on **465 / implicit TLS**; a self-hosted
+server may differ) · `username` (SMTP AUTH, provider-defined, often not an email address — on Gmail it
+**is** the address, on Resend it is the literal `resend`; see the per-vendor table above) · `password`
 (write-only) · `fromAddress` (≤254; used as **both** the SMTP envelope sender and the `From` header) ·
 `fromName?` (display name; omit for the bare address).
 
