@@ -226,8 +226,9 @@ Each leaf maps to the concrete skill that actually does the work.
     data is paginated, large, or of **unknown size** (e.g. *all* Media in a Space — visible items are
     not the full set), search **server-side** via the list API, not `Array.filter`. Full-text search
     over `fields.*` text (e.g. a title) needs the **Advanced Search** header
-    `X-Weegloo-Advanced-Search: true` (plain `eq` is exact-match only); RichText/Json aren't
-    searchable. → `weegloo-api-query-optimization` + `weegloo-list-pagination`
+    `X-Weegloo-Advanced-Search: true` — plain `eq` is exact-match only, **and unindexed, so a
+    `fields.*` query without the header gets slow and times out as the Space fills up**;
+    RichText/Json aren't searchable. → `weegloo-api-query-optimization` + `weegloo-list-pagination`
 - **Localization (multi-language)**
   - **A language switcher in the UI means the product is multi-language** — `English` / `한국어` /
     `日本語` buttons, a flag or globe menu, `/en/…` routes, a `lang` value in state, or the same copy
@@ -463,7 +464,7 @@ static image and call it done.
 | User Data (private/per-user) | `weegloo-service-architecture` + `weegloo-create-content-type` + `weegloo-space-role` |
 | Application Data             | `weegloo-create-content-type` + `weegloo-cma-json-patch` + `weegloo-cda-publish` |
 | Multi-language / i18n (a language switcher in the UI) | `weegloo-create-content-type` (`localized: true` on the per-language text fields only) + `weegloo-default-locale`. Space needs **≥2 Locales** — add one with `optional: true` and `fallbackCode` = the default's `code` (without it the second language renders blank). Never machine-translate to fill locales; read with **`?locale=<code>`**. |
-| Search (over content/Media)  | decide in-memory vs server-side (loaded array ≠ dataset); full-text `fields.*` → `X-Weegloo-Advanced-Search: true` → `weegloo-api-query-optimization` + `weegloo-list-pagination` |
+| Search (over content/Media)  | decide in-memory vs server-side (loaded array ≠ dataset); any `fields.*` filter or `order` → `X-Weegloo-Advanced-Search: true` (exact-match **and** unindexed without it — slow, then timeouts) → `weegloo-api-query-optimization` + `weegloo-list-pagination` |
 | File Upload (product feature)| `weegloo-upload-api` (Upload REST API → CMA/ACMA Media / WebHosting create) |
 | File Download                | `weegloo-cda-publish` (Media via CDA/ACDA)                               |
 | Web Hosting (deploy a site)  | `weegloo-web-hosting` (+ `weegloo-upload-api` for the build upload)      |

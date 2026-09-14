@@ -1,6 +1,6 @@
 ---
 name: weegloo-api-query-optimization
-description: Weegloo list APIs - how to READ Content and Media correctly. Projection with select is the DEFAULT on every read, including the agent's own cma_GetList* MCP calls (an unprojected list returns whole documents - every locale bucket of every field - into your context); covers include/exclude modes, object paths, keeping order keys projected, list-as-single via sys.id, batch fetch with sys.id[in], prefetch sys.version for PATCH/PUT, and CMA Media mimeGroups filtering. Use whenever fetching content or media, not only when something feels slow - also to avoid redundant reference expansion and to replace N single GETs with one list call. ALSO covers the master/detail pattern (lightweight list/sidebar + on-click single-Content detail fetch) and resolving a Refer→Media image/file field to a displayable URL — use when building a history list, gallery, inbox, or any list-then-open-item UI. ALSO covers Weegloo image processing: appending a preset style segment (`/style1`..`/style10`, max-dimension px, aspect-preserving WebP) to a Media file URL to get on-the-fly resized thumbnails/avatars without re-uploading — use when sizing images, building thumbnails/avatars, or optimizing image delivery. ALSO covers implementing a SEARCH feature: deciding in-memory vs server-side search (filtering the loaded array only works when it is the whole dataset) and full-text search over fields.* text via the Advanced Search header (X-Weegloo-Advanced-Search), which is REQUIRED for any filter or order on a fields.* path and cannot be sent through the MCP tools at all — use when a UI has a search box over content/Media, or when a fields.* filter came back empty.
+description: Weegloo list APIs - how to READ Content and Media correctly. Projection with select is the DEFAULT on every read, including the agent's own cma_GetList* MCP calls (an unprojected list returns whole documents - every locale bucket of every field - into your context); covers include/exclude modes, object paths, keeping order keys projected, list-as-single via sys.id, batch fetch with sys.id[in], prefetch sys.version for PATCH/PUT, and CMA Media mimeGroups filtering. Use whenever fetching content or media, not only when something feels slow - also to avoid redundant reference expansion and to replace N single GETs with one list call. ALSO covers the master/detail pattern (lightweight list/sidebar + on-click single-Content detail fetch) and resolving a Refer→Media image/file field to a displayable URL — use when building a history list, gallery, inbox, or any list-then-open-item UI. ALSO covers Weegloo image processing: appending a preset style segment (`/style1`..`/style10`, max-dimension px, aspect-preserving WebP) to a Media file URL to get on-the-fly resized thumbnails/avatars without re-uploading — use when sizing images, building thumbnails/avatars, or optimizing image delivery. ALSO covers implementing a SEARCH feature: deciding in-memory vs server-side search (filtering the loaded array only works when it is the whole dataset) and full-text search over fields.* text via the Advanced Search header (X-Weegloo-Advanced-Search), which is REQUIRED for any filter or order on a fields.* path and cannot be sent through the MCP tools at all. The header is also what keeps such a query fast: without it fields.* is unindexed and the request degrades into a scan that gets slow and times out as the Space fills up, while sys.* filters stay indexed either way — use when a UI has a search box over content/Media, when a fields.* filter came back empty, or when a list request is slow or timing out.
 ---
 
 # Weegloo - query optimization for list APIs
@@ -268,10 +268,24 @@ Content data lives in **`fields.*`**, not `sys.*` — search the right place, th
   survives testing. With it, `eq` on a full-text-enabled **LongText** matches items that *contain* the
   term, and the `regex` and geo `near`/`within` operators become available. Do **not** read that empty
   result as "no matches" and fall back to filtering in memory.
+- **Send the header for SPEED too, not only for substring matching — it is what keeps a `fields.*`
+  query from timing out.** Without it the request is served from a store indexed on the **system
+  axes** only: the `sys.*` facts every resource carries whatever it holds — Space, ContentType, owner,
+  status, tags, references, recency — plus the `createdBy` convenience. A filter or `order` confined
+  to those is fast. **There is no index for `fields.*`**, so that part of the query becomes a scan:
+  the response gets very slow and then **times out**. The failure grows with how much content the
+  Space holds, so it passes against seed data and surfaces in production, on the endpoint you already
+  shipped. Treat the header as the default for any `fields.*` query and the exception as the thing
+  you justify.
+- **When a `fields.*` filter must run without the header, narrow it with the system axes first** —
+  the ContentType scope plus something like `createdBy` — so the unindexed part runs over a small
+  subset rather than the whole Space.
 - ⚠️ **The header is HTTP-only — the MCP tools cannot send it.** `cma_GetListContents` /
   `cma_GetListMedias` take `filter`, `select`, `order` and paging, and no header parameter, so a
-  `fields.*` filter issued **over MCP is exact-match only**. Real text search is application code
-  calling CMA/CDA over HTTP; never conclude from an empty MCP result that the rows are not there.
+  `fields.*` filter issued **over MCP is exact-match only — and unindexed**, which is where your own
+  tool call hangs on a Space with real content. **Prefer `sys.*` filters for your own MCP list
+  calls**, and scope a `fields.*` one by ContentType when you need it. Real text search is application
+  code calling CMA/CDA over HTTP; never conclude from an empty MCP result that the rows are not there.
 - **RichText and Json fields are not searchable.** If a field must be searched, model it as
   ShortText/LongText with the right search setting **at design time** — search is decided when you
   model the data, not bolted on after (`weegloo-create-content-type`).
