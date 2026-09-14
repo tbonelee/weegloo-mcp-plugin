@@ -242,14 +242,29 @@ only the console-specific clicks differ — those live in a per-provider skill *
    (the `/code/` form — hit by the provider → Weegloo, not the browser; pitfall **A**).
    **Deploy-independent — set it now** (pitfall **G**). Then copy that provider's `clientId` /
    `clientSecret`.
-2. **Weegloo Console → ServiceLogin:**
-   - `clientId` / `clientSecret` from the provider's OAuth client above. **Blocking user-only inputs —
-     ask the user for them (via the per-provider walkthrough) and do not report sign-in as done without
-     them (pitfall G).**
+2. **Create the `ServiceLogin` yourself** — **`cma_CreateServiceLogin`**, not the user clicking through
+   the console. The fields split by who can supply them.
+
+   **Ask the user — nobody else can produce these:**
+   - `providers` → a **list** (1–10), not a pair of top-level fields. Each entry is
+     `{ registrationId, clientId, clientSecret, clientName? }`, where `registrationId` is the provider
+     key (`google`, `github`, …) — the same value as `{provider}` elsewhere on this page. The
+     `clientId` / `clientSecret` from step 1 go **inside an entry**. **Blocking — do not report sign-in
+     as done without them (pitfall G).**
+   - `contactEmail` → the product's support address. Weegloo shows it to the end user when a sign-in is
+     refused, so it must be an address that actually reaches someone. Ask; do not invent one.
+
+   **You supply these:**
+   - `name` → 1–30 chars, the service name the end user sees while signing in. Derive it from the product.
    - `defaultRole` → `Refer` to a least-privilege `ServiceUserRole` (create it first).
    - `callbackUrl` → a URL on **your product** that the SDK can intercept (Weegloo will redirect the
      browser there with `?exchangeToken=...`). **Deploy-dependent** — if the app is not deployed yet,
      set a placeholder and patch it after deploy (pitfall **G**).
+
+   ⚠️ **Settle the provider list at creation time.** `cma_UpdateOneServiceLogin` has no `providers`
+   field, and no MCP tool edits the provider list — so once the `ServiceLogin` exists you cannot add,
+   swap, or drop a provider with the tools you have. Decide which provider(s) the product needs before
+   you call `cma_CreateServiceLogin`.
 3. **Product code:** call the SDK's `auth.handleCallback()` on the callback URL page. Do not roll your
    own exchange unless you cannot use the SDK.
 
