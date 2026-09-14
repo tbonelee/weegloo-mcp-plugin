@@ -313,7 +313,10 @@ Script. Full patterns: **`weegloo-script`**.
 > Content/Media action the Script performs, or the save is rejected (`WGL403015`). **One exception:**
 > Content **`Create`** may be a **`contentType`-scoped** `Allow` — an author who can create only
 > ContentType A may author a Script that creates type-A Content (a `createdBy`/`tag` filter on that
-> Create still rejects; Media `Create` has no ContentType, so it must stay unconditional). Author
+> Create still rejects; Media `Create` has no ContentType, so it must stay unconditional). The same
+> gate covers a Script's `ResourceCount`, on whichever map it counts — a **ContentType** count needs
+> an unconditional `Read` `Allow` on the role's **`contentType`** map, which a Content/Media-only role
+> does not carry. Author
 > Scripts as a broadly-permissioned admin; keep end users to `Execute` only. Detail: **`weegloo-script`**.
 
 ---

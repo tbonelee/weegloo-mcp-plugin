@@ -1,6 +1,6 @@
 ---
 name: weegloo-script
-description: Weegloo Script — declarative, statement-based backend endpoints stored in a Space that your frontend calls via POST /execute. A Script runs a sequence of statements (ResourceRead/Find/ForEach, ResourceCreate/Update/Patch/Delete/Publish/Unpublish/Archive/Unarchive, Http, EmailSend, SetVar, Cache, ParseJson, Signature, Hash, Regex, If/Loop/Parallel/Try, Return) with `{ /pointer }` value expressions over the roots /payload, /rawPayload, /headers, /now (seconds|millis|iso), /vars and /error, plus JsonLogic operations (operators take a `$` prefix in data slots such as `fields` / `Http.body`, where a bare key is a field name). A run executes on the request against script.weegloo.com and answers with its Return value, so calling one is an ordinary API call. Verify an inbound webhook signature inside that run: Signature (HMAC, constant-time, accepts hex or base64 with no encoding field), Hash (unkeyed digest for schemes that salt the message with a shared secret), Regex (Match/Capture — the only way to cut text apart) and /now for the replay window. Also covers the two resource-level invocation flags — directCallEnabled, and anonymousCallEnabled which opens POST /execute/anonymous to a caller with NO token (runs as the Script's author, no :self filter, and the Script itself must verify what it was sent). Call an external API and write the result back into Content/Media from one Script. Also covers the Script `Execute` role permission (scopable to all / caller-created / one specific Script via the `self` Refer filter) and per-plan Script limits. Use when a product must call a third-party API (LLM/image/search/payment) without its own backend, react to a Space event with follow-up work (Webhook + Script), run ordered all-or-nothing multi-step work with Try/catch compensation, do concurrency-safe writes via the sys.version field (optimistic locking, no lost updates), let a low-privilege caller perform ONE privileged operation through author-delegated authority (e.g. append to a Log they cannot otherwise write, or gate an anonymous board's edit/delete on a caller-supplied password checked against a credential store they cannot read), or run any "create a job → poll for the result" flow.
+description: Weegloo Script — declarative, statement-based backend endpoints stored in a Space that your frontend calls via POST /execute. A Script runs a sequence of statements (ResourceRead/Find/Count/ForEach — Count binding the number of matches, 0 rather than null when none, over Content or the count-only ContentType resource — ResourceCreate/Update/Patch/Delete/Publish/Unpublish/Archive/Unarchive, Http, EmailSend, SetVar, Cache, ParseJson, Signature, Hash, Regex, If/Loop/Parallel/Try, Return) with `{ /pointer }` value expressions over the roots /payload, /rawPayload, /headers, /now (seconds|millis|iso), /vars and /error, plus JsonLogic operations (operators take a `$` prefix in data slots such as `fields` / `Http.body`, where a bare key is a field name). A run executes on the request against script.weegloo.com and answers with its Return value, so calling one is an ordinary API call. Verify an inbound webhook signature inside that run: Signature (HMAC, constant-time, accepts hex or base64 with no encoding field), Hash (unkeyed digest for schemes that salt the message with a shared secret), Regex (Match/Capture — the only way to cut text apart) and /now for the replay window. Also covers the two resource-level invocation flags — directCallEnabled, and anonymousCallEnabled which opens POST /execute/anonymous to a caller with NO token (runs as the Script's author, no :self filter, and the Script itself must verify what it was sent). Call an external API and write the result back into Content/Media from one Script. Also covers the Script `Execute` role permission (scopable to all / caller-created / one specific Script via the `self` Refer filter) and per-plan Script limits. Use when a product must call a third-party API (LLM/image/search/payment) without its own backend, react to a Space event with follow-up work (Webhook + Script), run ordered all-or-nothing multi-step work with Try/catch compensation, do concurrency-safe writes via the sys.version field (optimistic locking, no lost updates), let a low-privilege caller perform ONE privileged operation through author-delegated authority (e.g. append to a Log they cannot otherwise write, or gate an anonymous board's edit/delete on a caller-supplied password checked against a credential store they cannot read), or run any "create a job → poll for the result" flow.
 ---
 
 # Weegloo — Script (declarative backend endpoints)
@@ -192,10 +192,13 @@ whenever one of these fits. These are the situations an AI agent should map to S
 
 Every statement carries a **`type`** (the discriminator — **always include it**) and an optional
 **`name`** that binds its result into the context as `{ /<name>/… }` for later statements. On
-resource statements, **`resource`** is **`Content` | `Media`** — plus **`ServiceUser`** on the **read**
-statements only (`ResourceRead`/`ResourceFind`/`ResourceForEach`): ServiceUser is read-only (no mutation
-statement accepts it), and reading it requires the `SETTING_SERVICE_LOGIN` settings permission. Statements
-run top-to-bottom and stop at `Return`.
+resource statements, **`resource`** is **`Content` | `Media`** — plus two kinds each accepted by one
+statement only. **`ServiceUser`** is read-only: the **read** statements (`ResourceRead`/`ResourceFind`/
+`ResourceForEach`) take it, no mutation does, and reading it requires the `SETTING_SERVICE_LOGIN`
+settings permission. **`ContentType`** is **countable only**: `ResourceCount` takes it, every other
+resource statement is **rejected at save** — a Script works on a Space's content, not on its schema,
+so the one thing it may ask about a ContentType is how many there are. Statements run top-to-bottom
+and stop at `Return`.
 
 ### Control flow
 
@@ -341,12 +344,13 @@ guidance: **`weegloo-payment`**.
 
 ### Resource reads (`requiredAction: Read`; no writes)
 
-All three take **`from`**: **`Current`** (live draft — what CMA/ACMA read; **default**) or
+All four take **`from`**: **`Current`** (live draft — what CMA/ACMA read; **default**) or
 **`Published`** (the published snapshot CDA/ACDA serve).
 
-The two **search** reads (`ResourceFind` / `ResourceForEach`) additionally take **`advanced`** (bool,
-default `false`) — **Advanced Search** over Content (see the *Advanced Search* callout below). It does
-**not** apply to `ResourceRead` (get-one-by-id never searches) nor to Media reads.
+The three **search** reads (`ResourceFind` / `ResourceForEach` / `ResourceCount`) additionally take
+**`advanced`** (bool, default `false`) — **Advanced Search** over Content (see the *Advanced Search*
+callout below). It does **not** apply to `ResourceRead` (get-one-by-id never searches), nor to Media
+reads, nor to a `ContentType` count.
 
 - **`ResourceRead`** — get one **by id**: `resource`, `target` (`{ sys: { id } }`; `sys.id` is a
   value expression), `from`. Binds the **full resource** under `name` (`{ /name/fields/title/en-US }`);
@@ -367,6 +371,31 @@ default `false`) — **Advanced Search** over Content (see the *Advanced Search*
     all-or-nothing.
   - **There is no cursor-paging read statement** — iterate with `ResourceForEach`, or fetch a single row
     with `ResourceFind` / `ResourceRead`.
+- **`ResourceCount`** — **how many match**, as a number: `resource` (**`Content` | `ContentType`**
+  only), `contentType` (scopes a Content count; ignored when counting ContentType, which is
+  space-flat), `where` (same filter shape and operators as `ResourceFind`, `:self` supported; omit it
+  to count everything), `from`, `advanced`, `name`. Binds a **number** — no resource enters the
+  context.
+  - **No match binds `0`, not `null`** (where `ResourceFind` binds `null`). Branch with a numeric
+    comparison — `{ ">": [ "{ /mine }", 0 ] }` — not a `null` check.
+  - **No `order` and no `limit`** — it is a total, not a page. Do not approximate a count by reading
+    one row with `ResourceFind`, and do not tally by iterating: `ResourceForEach` pays the item cap
+    and a per-item time budget for a number the store returns directly.
+  - **Counting `ContentType` is the one read with no locale defaulting** — a ContentType has no
+    localized `fields.*`, so a `where` key is used exactly as written (the automatic default-locale
+    suffix in the note below does not apply). `advanced` is ignored there too.
+
+```jsonc
+// how many posts this caller has written — then gate on it
+{ "type": "ResourceCount", "resource": "Content", "name": "mine",
+  "contentType": { "sys": { "id": "ct_post" } },
+  "where": { "createdBy": ":self" } }
+{ "type": "If", "condition": { ">=": [ "{ /mine }", 10 ] },
+  "then": [ { "type": "Return", "value": "daily post limit reached", "isError": true, "statusCode": 429 } ] }
+
+// how many ContentTypes the Space has
+{ "type": "ResourceCount", "resource": "ContentType", "name": "schemaCount" }
+```
 
 > **`where` / `order` field keys — a content field MUST be `fields.<apiName>`, never the bare name (the
 > #1 mistake).** Write **`fields.postId`**, not `postId` — a bare content-field name is not recognized and
@@ -376,7 +405,8 @@ default `false`) — **Advanced Search** over Content (see the *Advanced Search*
 > **non-default** locale do you write the full `fields.<name>.<locale>` (e.g. `fields.postId.en-US`).
 > **Exceptions (no `fields.` prefix):** **`sys.*`** fields (`sys.createdAt`, `sys.status`, …) and the
 > **`createdBy`** convenience (with `:self`) are used **as-is**. The same key rules apply to `order`
-> tokens — e.g. `order: "-fields.score"` or `"-sys.createdAt"`.
+> tokens — e.g. `order: "-fields.score"` or `"-sys.createdAt"`. **A `ContentType` count is outside
+> all of this** — it has no `fields.*` at all, so nothing is prefixed or locale-suffixed there.
 >
 > ```jsonc
 > // ✅ correct                                  // ❌ wrong — WEB400002
@@ -385,7 +415,8 @@ default `false`) — **Advanced Search** over Content (see the *Advanced Search*
 > ```
 
 > **Advanced Search — set `advanced: true` whenever `where` / `order` touch `fields.*`.** A plain
-> (non-advanced) `ResourceFind` / `ResourceForEach` matches **`fields.*`** by **exact equality only**.
+> (non-advanced) `ResourceFind` / `ResourceForEach` / `ResourceCount` matches **`fields.*`** by
+> **exact equality only** — which silently undercounts a count, rather than failing.
 > **Strongly prefer `advanced: true` for any search or sort over a user-defined content field**
 > (`fields.<name>`) — that is the mode that supports partial / "contains" text matching, fuzzy search,
 > and dependable ordering on content fields. Rule of thumb, by the keys in `where` / `order`:
@@ -393,8 +424,8 @@ default `false`) — **Advanced Search** over Content (see the *Advanced Search*
 > - uses **only `sys.*`** (`sys.createdAt`, `sys.status`, …) and/or the `createdBy` convenience → leave
 >   `advanced` off (default) — those are served directly, no advanced needed.
 >
-> **Content only** — `advanced` is ignored on a Media read. (The targeted `fields.*` must also be a
-> search-enabled field type — see `weegloo-create-content-type`.)
+> **Content only** — `advanced` is ignored on a Media read and on a `ContentType` count. (The targeted
+> `fields.*` must also be a search-enabled field type — see `weegloo-create-content-type`.)
 >
 > ```jsonc
 > // fields.* in where/order → advanced: true
@@ -409,8 +440,9 @@ default `false`) — **Advanced Search** over Content (see the *Advanced Search*
 >
 > **A just-created row may not be found via `advanced` immediately.** Advanced Search is served from a
 > search index that catches up a short moment **after** a write — typically about a second. So a row you
-> just created (or updated) may **not** yet appear in an `advanced` `ResourceFind` / `ResourceForEach`
-> run in the **same** flow, or in a client's instant re-query right after the write. When you must read a
+> just created (or updated) may **not** yet appear in an `advanced` `ResourceFind` / `ResourceForEach` /
+> `ResourceCount` run in the **same** flow — a count taken right after a write can come back one short —
+> or in a client's instant re-query right after the write. When you must read a
 > just-written row straight away, fetch it **by id** with **`ResourceRead`** (which reads the primary
 > store — no indexing delay) or key the follow-up read off the write's returned `sys.id`. Do **not** rely
 > on Advanced Search to surface brand-new rows in the same breath.
@@ -605,6 +637,9 @@ at another Script (`weegloo-webhook`).
   saved; missing it → **`WGL403015`** (Content **create** may keep a `contentType` filter, the one
   exception). Practically: **author Scripts as an admin / broadly-permissioned Weegloo User.** A
   narrowly-scoped role cannot save a Script that writes outside its filters.
+  **A `ResourceCount` is gated the same way, on the map matching what it counts** — a Content count
+  needs unconditional `content` `Read`, a **ContentType count needs unconditional `contentType`
+  `Read`**, which a role that only grants Content/Media rights does not carry.
 - **Attribution & `:self`:** resource writes are attributed to the **executor** (`sys.createdBy` /
   `updatedBy` = whoever called `/execute`), and **`:self` inside the script resolves to that
   executor** — even though authorization came from the author. So enforce ownership in the Script
