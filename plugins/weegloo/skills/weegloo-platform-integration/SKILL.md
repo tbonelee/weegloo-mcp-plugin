@@ -537,9 +537,16 @@ These are two different things; do not confuse them. Full mechanics and the crea
 - **Respect the two identity systems.** "Login/Signup" splits into Weegloo User (admin) vs Service
   User (end-user). Do not ask the user to choose — infer the right identity model from the request
   (and integrate both where both clearly apply), defaulting sensibly rather than prompting.
+- **Fetch the minimum; compute on the client.** Every screen you wire reads **only** what it renders
+  (`select`, server-side filters, `limit`, `totalCount` instead of paging to count) and derives
+  everything that needs no server-side authority — totals, sorting, grouping, formatting, date math —
+  **in the browser / app**, not through another Weegloo call or a Script. Never pull a whole
+  collection to filter it locally, and never poll a list on a timer. Non-negotiable rule:
+  **`weegloo-minimal-load`**.
 - **When unsure how a feature behaves, read the docs first** (per `weegloo-global-rules`); do not guess.
 
 ## Related
 
 - `weegloo-service-architecture` — the primary downstream entry point (API + login + role per service type).
+- `weegloo-minimal-load` — rule: fetch the minimum, compute on the client, and what must stay server-side.
 - `weegloo-global-rules` — global gates this router must respect.

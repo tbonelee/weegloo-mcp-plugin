@@ -21,6 +21,14 @@ see *The external-API job pattern* below.
   `createdBy`, validate input) before doing work.
 - Any **"create a job → poll for the result"** flow.
 
+**When NOT to use one.** A Script must earn its run: executions are a **monthly, Organization-wide
+allowance** shared with Webhook-run Scripts and Schedulers, and once it is spent every Script *and*
+Scheduler in the Organization stops. Work that needs none of the server's authority — summing,
+sorting, grouping, formatting, date math over data the caller already holds — belongs in the
+**client** (browser / app), not in a Script and not in a `summary` Content rewritten on every change.
+Ask "does this need a secret, an authorization decision, atomicity, concurrency safety, delegated
+privilege, or data the client must not hold?" — if no, it is client code. Rule: `weegloo-minimal-load`.
+
 > Base URLs, Accept/vendor-JSON, and OpenAPI/docs discovery live in `weegloo-api-endpoints`.
 > Role permission shapes (incl. Script `Execute`) live in `weegloo-space-role`.
 > Media readiness (`Published`, file `state`) lives in `weegloo-media-lifecycle`.
@@ -802,3 +810,4 @@ Organization and any Scheduler that comes due is **deactivated** rather than run
 - `weegloo-media-lifecycle` — when an ingested Media is deliverable.
 - `weegloo-api-endpoints` — base URLs, vendor JSON, OpenAPI discovery.
 - `weegloo-api-query-optimization` — poll a result Content by `sys.id`.
+- `weegloo-minimal-load` — rule: a Script must earn its run; fetch the minimum and compute on the client.

@@ -297,6 +297,7 @@ reference (linked from `weegloo-api-endpoints`). Don't guess operators.
 
 ## Related
 
+- **Why this is mandatory, not tuning:** **`weegloo-minimal-load`** rule — fetch the minimum Weegloo can answer with, compute everything that needs no server-side authority on the client, and the load anti-patterns to refuse (polling loops, paging to count, N+1 by-id reads, fetch-all-then-filter).
 - **Endpoints and headers:** **`weegloo-api-endpoints`** rule.
 - **Pagination:** **`weegloo-list-pagination`** skill (`links.next`, first-page params).
 - **PATCH/PUT, JSON Patch, version headers:** **`weegloo-cma-json-patch`** skill.

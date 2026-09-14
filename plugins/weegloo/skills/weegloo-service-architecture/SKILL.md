@@ -139,6 +139,7 @@ Combine recipes - every path uses the API that matches the **caller's identity**
 - **Routing Service User writes through CMA + Weegloo User login.** That makes every writing member a Weegloo platform account on the Space — the wrong identity model. Use ACMA via ServiceLogin. (Member-contributed media is the same story: **Upload → ACMA** Media create with the ServiceLogin Bearer, never CMA Media.)
 - **Treating a moderator role as Weegloo-admin.** A `ServiceUserRole` reaches Content / Media on ACMA and ACDA only. It never lets the member manage the Space itself.
 - **Leaving `createdBy :self` off the default role.** That silently lets every member edit and delete every other member's rows. Scope the default role; widen only through `roleOverride`.
+- **Putting work on Weegloo that the client can do.** A Script that only sums, sorts, groups or formats data the caller already holds spends the Organization's monthly execution allowance for nothing; a `summary`/`stats` Content rewritten on every change is a second source of truth. Equally wrong in the other direction: pulling a whole collection to the client so it can filter locally. Server narrows, client derives — **`weegloo-minimal-load`**.
 
 ## LLM checklist
 
@@ -150,6 +151,7 @@ When planning an architecture, answer these in order:
 4. **Service User writes?** → ACMA with Bearer Token. Give the default role **`createdBy :self`**; moderators get a role without it through `roleOverride`.
 5. **Service User reads of personal/assigned content?** → ACDA with the same Bearer Token.
 6. **Service User uploads media (avatar, attachment, etc.)?** → **Upload** with the ServiceLogin Bearer, then **ACMA** Media create with the same Bearer. Never route member media through CMA.
+7. **For each screen: what is the smallest read that answers it, and where does the computation belong?** Scope and filter server-side, project with `select`, page on demand — then derive totals, sorting, grouping and formatting on the **client**. Keep on Weegloo only what needs its authority (secrets, authorization and amount/signature verification, atomic or concurrency-safe writes, privilege delegation, queries over data the client must not hold). See **`weegloo-minimal-load`**.
 
 If the product covers more than one row, ship all matching paths - they coexist (recipe 5).
 
@@ -166,6 +168,7 @@ This chain is the intended path: pick the architecture here, then walk skills 1�
 ## Related
 
 - **`weegloo-api-endpoints`** — base URLs, Accept header, vendor JSON, OpenAPI links, ACMA/ACDA ownership invariants.
+- **`weegloo-minimal-load`** — rule: fetch the minimum, compute on the client, and what must stay server-side.
 - **`weegloo-upload-api`** — Upload REST API → Media / WebHosting create (the two-step file-upload flow for product code), and the Upload-API-vs-`weegloo-upload`-MCP distinction.
 - **`weegloo-user-login`** — Weegloo User login (PAT + console FE popup) for CMA / Upload / CDA. The admin-side identity model.
 - **`weegloo-service-login`** — ServiceLogin / ServiceUser / ServiceUserRole mechanics and Bearer Token scope. The end-user identity model.
