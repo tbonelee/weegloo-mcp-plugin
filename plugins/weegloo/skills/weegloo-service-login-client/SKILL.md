@@ -251,11 +251,14 @@ only the console-specific clicks differ — those live in a per-provider skill, 
      key (`google`, `github`, …) — the same value as `{provider}` elsewhere on this page. The
      `clientId` / `clientSecret` from step 1 go **inside an entry**. **Blocking — do not report sign-in
      as done without them (pitfall G).**
-   - `contactEmail` → the product's support address. Weegloo shows it to the end user when a sign-in is
-     refused, so it must be an address that actually reaches someone. Ask; do not invent one.
 
    **You supply these:**
    - `name` → 1–30 chars, the service name the end user sees while signing in. Derive it from the product.
+   - `contactEmail` → the service manager's address, shown to the end user when a sign-in is refused.
+     **Derive it; do not ask.** Use `support@<the product's domain>` when the product has a domain,
+     otherwise the address of the account you are setting this up with. Unlike `providers`, this one
+     **is** editable afterwards (`cma_UpdateOneServiceLogin` carries it), so an address the owner
+     refines later costs nothing while a blocking question costs a turn.
    - `defaultRole` → `Refer` to a least-privilege `ServiceUserRole` (create it first).
    - `callbackUrl` → a URL on **your product** that the SDK can intercept (Weegloo will redirect the
      browser there with `?exchangeToken=...`). **Deploy-dependent** — if the app is not deployed yet,
