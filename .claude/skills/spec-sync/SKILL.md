@@ -19,11 +19,27 @@ description: >
 
 ## 대원칙 (양보 불가)
 
-1. **Swagger = 정본, 서버 레포 = 해설.**
+1. **Swagger = 정본, 서버 레포 = 해설. 그 Swagger 는 `dev-` 스택의 것이다.**
    "무엇이 존재하는가"는 **배포된 Swagger로만** 판정한다. 서버 레포에는 미배포 기능이
    섞여 있고(feature 브랜치뿐 아니라 develop에도), 그걸 룰에 반영하면 **사용자
    에이전트가 존재하지 않는 기능을 안내한다.** 서버 레포는 "왜/어떻게 동작하는가"를
    캐는 용도로만 쓴다. → Swagger에 없으면 **문서화하지 않는다.**
+
+   **판정 기준 스택은 `dev-` 다** — `dev-cma.weegloo.com` · `dev-cda.weegloo.com` ·
+   `dev-acma.weegloo.com` · `dev-acda.weegloo.com` · `dev-upload.weegloo.com` ·
+   `dev-script.weegloo.com`, 버전·MCP 는 `dev-ai.weegloo.com`. **프로덕션
+   (`cma.weegloo.com` · `script.weegloo.com` · `ai.weegloo.com` …)으로 게이트하지 마라.**
+   변경은 dev 에 먼저 올라가고 프로덕션은 뒤따르므로, 프로덕션 기준으로 판정하면 이미
+   배포된 기능이 매번 "미배포"로 떨어져 반영이 한 릴리스씩 밀린다.
+   - **프로덕션에만 있고 dev 에 없는 것은 없다** — dev 가 앞선다. 따라서 dev 에 있으면
+     쓰고, dev 에 없으면 쓰지 않는다. 그게 전부다.
+   - dev 에 **아직** 없는 변경(서버 레포에는 커밋·머지됐지만 배포 전)은 **미배포**다.
+     기본값은 **쓰지 않는다**이고, 리포트 ③에 "미배포"로 올려 사람이 보게 한다. 사람이
+     **명시적으로 지시**했을 때만 예외로 쓰되, 그 경우 **배포 전임을 함께 보고**한다 —
+     조용히 반영하지 마라.
+   - **본문에 `dev-` 호스트를 적지는 않는다.** 배포되는 스킬·룰이 사용자에게 안내하는
+     URL 은 프로덕션 호스트 그대로다(환경 치환은 인스톨러의 `--origins` 가 한다 —
+     `installer-cli/docs/origins-mapping.md`). dev 는 **판정에만** 쓰는 기준선이다.
 
 2. **추측 금지 · 승인 없이 편집 금지.**
 
@@ -44,7 +60,15 @@ description: >
 |---|---|---|
 | `SERVER` — weegloo-server 로컬 경로 | 해설 | 형제 디렉터리를 **후보로 제안**하고 확인받는다 |
 | `BASE`..`HEAD` — 서버 레포 git range | 변경 감지 범위 | **반드시 물어본다** |
-| `SWAGGER` — plane별 OpenAPI JSON URL **목록** | **정본.** 배포 여부 판정 | 사용자에게 요청. 호스트를 지어내지 말 것 |
+| `SWAGGER` — plane별 OpenAPI JSON URL **목록** | **정본.** 배포 여부 판정 | **`dev-` 스택을 기본 후보로 제시**하고 확인받는다(대원칙 1). 그 외 호스트를 지어내지 말 것 |
+
+기본 후보 — 필요한 plane 만 쓴다. 경로는 plane 공통 `…/v1/swagger/v3/api-docs` 다:
+
+```
+https://dev-cma.weegloo.com/v1/swagger/v3/api-docs     https://dev-acma.weegloo.com/…
+https://dev-cda.weegloo.com/v1/swagger/v3/api-docs     https://dev-acda.weegloo.com/…
+https://dev-upload.weegloo.com/v1/swagger/v3/api-docs  https://dev-script.weegloo.com/…
+```
 
 ### 🔴 이 게이트를 우회하는 변명 (전부 금지)
 
@@ -278,10 +302,11 @@ git -C "$SERVER" show "$HEAD:ai/src/main/kotlin/com/weegloo/ai/mcp/ToolGroup.kt"
 
 ## Step 3 — 정본 게이트 (Swagger 대조)
 
-추가분이 **실제 배포됐는지** 확인한다. 없으면 이번 반영 대상이 아니다.
+추가분이 **`dev-` 스택에 실제 배포됐는지** 확인한다(대원칙 1). 없으면 이번 반영 대상이 아니다.
 
 Step 0에서 받은 **plane별 URL**을 각각 대조한다. plane마다 변수를 따로 두고, **Step 0에서 실제로
-받은 plane만** 만든다(`SWAGGER_CMA`, `SWAGGER_CDA`, …).
+받은 plane만** 만든다(`SWAGGER_CMA`, `SWAGGER_CDA`, …). 그 URL 들은 `dev-` 호스트여야 한다 —
+프로덕션 URL 이 섞여 있으면 Step 0 으로 되돌아가 확인받는다.
 
 ```bash
 # plane 하나당 한 번. 받지 못한 plane은 아예 실행하지 않는다.
@@ -310,9 +335,11 @@ curl -fsS "$SWAGGER_CMA" | jq -r '.paths[][].operationId' | sort -u > /tmp/spec-
 ### 보조 신호: 현재 세션의 MCP 툴 목록
 
 이 세션에 보이는 `mcp__weegloo__cma_*` 이름은 **실제 배포·노출된 툴 표면**이다.
-Swagger 대조의 교차검증으로 쓸 수 있다. 단 **부재는 미배포의 증거가 아니다** — 기본
-접속은 `basic` 그룹이라 `collaboration`/`system` 그룹 툴은 배포됐어도 안 보인다.
-**존재는 배포의 증거로 쓰되, 부재로 "미배포" 판정을 내리지 마라.**
+Swagger 대조의 교차검증으로 쓸 수 있다. 단 **부재는 미배포의 증거가 아니다** — 이유가 둘이다:
+기본 접속은 `basic` 그룹이라 `collaboration`/`system` 그룹 툴은 배포됐어도 안 보이고, 이 세션이
+붙는 MCP 는 `.mcp.json` 의 **프로덕션 `ai.weegloo.com/mcp`** 라 **`dev-` 에만 올라간 신규 툴은
+아직 안 보인다**(게이트는 dev 기준 — 대원칙 1). **존재는 배포의 증거로 쓰되, 부재로 "미배포"
+판정을 내리지 마라.**
 
 ---
 
@@ -445,7 +472,8 @@ grep -rliE "Script|EmailAccount|MFA|SMTP" plugins/weegloo/skills plugins/weegloo
 ## 가드레일
 
 - **Step 0 확정 전에는 화이트리스트 밖 명령을 실행하지 않는다.** 읽기 전용이어도 안 된다.
-- **Swagger에 없는 것을 문서화하지 않는다.** 서버 레포에 코드가 있어도 마찬가지.
+- **`dev-` 스택 Swagger에 없는 것을 문서화하지 않는다.** 서버 레포에 코드가 있어도, 커밋이
+  머지돼 있어도 마찬가지. 게이트는 **프로덕션이 아니라 dev** 다(대원칙 1).
 - **감지 ≠ 반영.** 에이전트 행동을 바꾸지 않는 변경은 Step 1e에서 걸러내되,
   **제외한 개수와 사유를 리포트에 남긴다.** 커밋 접두사(`refactor:`/`chore:`)로 판정 금지.
 - **모듈 목록·경로·ref를 하드코딩하거나 추측하지 않는다.**
