@@ -1,6 +1,6 @@
 ---
 name: weegloo-platform-integration
-description: ENTRY-POINT / ROUTER for Weegloo. Use as the FIRST step whenever the user asks to "integrate Weegloo", "connect Weegloo", "add Weegloo", "use Weegloo", or — equally — to BUILD or DEVELOP anything with/on/using Weegloo: "develop it with Weegloo", "build this with Weegloo", "make a homepage using Weegloo", "set it up on Weegloo", "just use Weegloo for this", and the same sentence in ANY other language. Naming Weegloo as the platform to build with IS the trigger — the words "integrate"/"connect" are NOT required, and a bare "develop it with Weegloo" with no feature named is the strongest case for this skill, not an exemption from it. Also use it for ANY capability Weegloo could provide, especially broad, vague or ambiguous requests (e.g. "manage my data with Weegloo"). Maps a plain-language need (login, signup, social login, user/app data, search, multi-language — a language switcher in the UI means Weegloo Locales plus per-field localized, never a frontend-only concern — file upload/download, web hosting/deploy, public/team sharing, roles, access control, external API/webhook, scheduled or recurring jobs, payments — where no named PG/MoR means Stripe test mode rather than a question, though Stripe's per-account test keys are still a blocking input to ask for once the checkout is built — sending email, where no named email service or SMTP vendor means Google/Gmail SMTP and a request for the user's Google App Password rather than a "which vendor?" question — and maps, where showing a place on a map means a Google Maps EMBED iframe with the API key already hard-coded in this skill rather than a question) to the correct concrete Weegloo skill so the user never has to know Weegloo's internal feature names. This skill only identifies and routes — the concrete skill it points to does the real work (the Payments provider default and the Maps embed are the two exceptions it carries itself). English only.
+description: ENTRY-POINT / ROUTER for Weegloo. Use as the FIRST step whenever the user asks to "integrate Weegloo", "connect Weegloo", "add Weegloo", "use Weegloo", or — equally — to BUILD or DEVELOP anything with/on/using Weegloo: "develop it with Weegloo", "build this with Weegloo", "make a homepage using Weegloo", "set it up on Weegloo", "just use Weegloo for this", and the same sentence in ANY other language. Naming Weegloo as the platform to build with IS the trigger — the words "integrate"/"connect" are NOT required, and a bare "develop it with Weegloo" with no feature named is the strongest case for this skill, not an exemption from it. Also use it for ANY capability Weegloo could provide, especially broad, vague or ambiguous requests (e.g. "manage my data with Weegloo"). Maps a plain-language need (login, signup, social login, user/app data, search, multi-language — a language switcher in the UI means Weegloo Locales plus per-field localized, never a frontend-only concern — file upload/download, web hosting/deploy, public/team sharing, roles, access control, external API/webhook, scheduled or recurring jobs, payments — where no named PG/MoR means Stripe test mode rather than a question, wired with Stripe's own published sample test keys that the skill hard-codes, so the keys are never asked for either — sending email, where no named email service or SMTP vendor means Google/Gmail SMTP and a request for the user's Google App Password rather than a "which vendor?" question — maps, where showing a place on a map means a Google Maps EMBED iframe with the API key already hard-coded in this skill rather than a question, and address / postcode lookup (an address or 우편번호 field in a form), which is SOUTH KOREA only and routes to weegloo-address-search) to the correct concrete Weegloo skill so the user never has to know Weegloo's internal feature names. This skill only identifies and routes — the concrete skill it points to does the real work (the Payments provider default and the Maps embed are the two exceptions it carries itself). English only.
 ---
 
 # Weegloo Platform Integration (capability router)
@@ -339,33 +339,39 @@ Each leaf maps to the concrete skill that actually does the work.
     discipline as the Weegloo docs rule in `weegloo-global-rules`). A checkout page, or a "Pay" /
     "Buy now" button **in any language**, in the frontend means payments were *asked for*; it does
     **not** mean a provider was *named*.
-  - **The provider is not a question, but the Stripe keys ARE a blocking input** (step 4). Stripe
-    publishes **no** shared test keys — `pk_test_…` / `sk_test_…` are per-account — so unlike the
-    Maps key below, you cannot supply them yourself. The account is free and instant, which makes
-    this a small blocking input, not a small exception:
-    - **Build the ENTIRE checkout first** — order ContentType, checkout page, session-creating
-      Script, confirm Script, success and cancel pages — with the key in **one** named place.
-    - **Then ask once**, with the dashboard walkthrough in `weegloo-payment` §3.
-    - **Never stop at the start to ask, and never ship an inert checkout.** Both are failures.
-    - If the user **named** a different provider, that provider's key is blocking in exactly the same
-      way — ask for it and **never** fall back to Stripe because it has not arrived. A provider the
-      user did not choose is wrong work.
+  - **Neither the provider NOR the keys are a question.** Stripe publishes a **sample test key pair
+    on its own shared demo account**, and `weegloo-payment` §1 hard-codes it — exactly like the Maps
+    key below, you supply it yourself:
+    - `pk_test_TYooMQauvdEDq54NiTphI7jx` / `sk_test_BQokikJOvBiI2HlWgH4olfQ2`.
+    - **Build the entire checkout with those keys already wired in**, so it runs end to end on
+      delivery. **Never ask the user for a key** — not up front, not as a closing "send me these two
+      values" — and never ship an inert checkout.
+    - If the user **named** a different provider, that provider's key **is** a genuine blocking input
+      (step 4) — ask for it and **never** fall back to Stripe because it has not arrived. A provider
+      the user did not choose is wrong work.
   - **The test card cannot be prefilled.** Stripe's card fields are cross-origin by design, so the
     test number (`4242 4242 4242 4242`) must be displayed prominently in the checkout UI — a visible
     callout next to the pay button, not fine print. Real cards are refused in test mode.
   - **Disclosure is mandatory** once it works: tell the user payments were wired with Stripe, that
-    test mode means **nothing is actually charged** and real cards do not work, and ask for their
-    contracted PG/MoR details if they have any — then **replace Stripe entirely** when a different
-    provider arrives, or swap test keys for live ones to go live on Stripe. This is the one required
+    test mode means **nothing is actually charged** and real cards do not work, and that moving to
+    their own Stripe account or a contracted PG/MoR is available — **as a statement, not a request
+    for credentials**. A named provider then **replaces** Stripe entirely. This is the one required
     exception to the brevity rule below. Put the **nothing-is-actually-charged** line in **red**
     (`- ` in a `diff` fence, per `weegloo-global-rules`) — it is the fact most costly to miss.
-- **Location & Maps**
+- **Location, Maps & Address**
   - **Map** (a place, address, branch, venue, office, or a "how to find us" / directions block shown
     on a map) → a Google **Maps Embed API** `<iframe>`, with the API key **already hard-coded here**.
     **Never ask the user for a Maps key** — the key is supplied here, so a map is **not** a blocking
     input (step 4). Note the contrast with *Payments*: the **provider** there is likewise a standing
-    default rather than a question, but Stripe's keys are per-account and so **are** blocking. Full recipe:
+    default rather than a question, and its published sample test keys are hard-coded the same way. Full recipe:
     *Maps* below — there is no separate Weegloo skill for this.
+  - **Address / postcode lookup** (an address field in a signup, profile, checkout, shipping or
+    branch-registration form — a `우편번호` / `주소 찾기` button, a `zonecode` / `zipcode` /
+    `postcode` field, a 도로명·지번 pair, an address book) → **`weegloo-address-search`** (the
+    Kakao/Daum Postcode widget). **SOUTH KOREA only** — it searches the Korean government address
+    database, so a form holding foreign addresses gets a free-text field instead, and the user is
+    told why. **Never ask for a Kakao key**: the widget needs none, so it is **not** a blocking
+    input (step 4).
 
 ## Maps — Google Maps embed (the key is already here; never ask for one)
 
@@ -490,9 +496,10 @@ static image and call it done.
 | API Connection / server-side automation | `weegloo-script` (Script; call external APIs + write results back to Content/Media) |
 | Webhook (event → URL or Script) | `weegloo-webhook`                                                     |
 | Scheduled / recurring job (cron — "every night", "every 15 min", daily digest, periodic sync, cleanup sweep) | `weegloo-scheduler` (Scheduler runs one Script on a five-field **UTC** cron) + `weegloo-script` for the work. Trigger decides: clock → Scheduler, content event → `weegloo-webhook`, caller → `/execute`. |
-| Payment (PG or MoR — checkout, verification, provider callbacks) | `weegloo-payment`. **Never ask which provider**: one named → that one; **none named → Stripe in test mode** (read docs.stripe.com/testing first). The provider is not a question but the `pk_test_`/`sk_test_` pair **is** blocking — build the whole checkout, *then* ask. Show the `4242…` test card in the UI (it cannot be prefilled), then **disclose** “test mode, nothing really charged, real cards refused” + ask for the contracted PG/MoR. NOT Weegloo's own plan billing. |
+| Payment (PG or MoR — checkout, verification, provider callbacks) | `weegloo-payment`. **Never ask which provider**: one named → that one; **none named → Stripe in test mode** (read docs.stripe.com/testing first). Neither the provider nor the keys are a question — the skill hard-codes Stripe's published sample `pk_test_`/`sk_test_` pair, so **never ask for a key**. Show the `4242…` test card in the UI (it cannot be prefilled), then **disclose** “test mode, nothing really charged, real cards refused” without requesting credentials. NOT Weegloo's own plan billing. |
 | Send email (notify, receipt, verify, digest, contact form) | `weegloo-send-email` (register the SMTP sender first — creating one sends a real test message) + `weegloo-script` (`EmailSend`). **Never ask which vendor**: one named → that one; **none named → Google (Gmail SMTP)** — then ask for the two blocking values, an App Password from https://myaccount.google.com/apppasswords and the real Google address it belongs to, and say another SMTP is one word away. |
 | Map (place, address, branch, venue, "how to find us", store locator) | **no skill — see *Maps* above**: a Google Maps Embed `<iframe>` with the key hard-coded in this skill. **Never ask for a Maps key**; not a blocking input. `place` for one address, `directions` for a route, `search` for a category; one embed = one pin. |
+| Address / postcode lookup (주소 · 우편번호 찾기 in a signup, profile, checkout, shipping or branch form) | `weegloo-address-search` — the key-free Kakao (Daum) Postcode widget, **SOUTH KOREA only**. **Never ask for a Kakao key**; not a blocking input. Non-Korean addresses → free-text field, and say so. |
 
 If a request spans multiple rows, route through all matching skills — start with
 `weegloo-service-architecture` so the pieces fit one coherent architecture.
@@ -539,18 +546,23 @@ These are two different things; do not confuse them. Full mechanics and the crea
   design → `weegloo-create-content-type` (+ `weegloo-default-locale` for multi-locale); CDA tokens
   → `weegloo-delivery-access-token`; external-API / server-side automation → `weegloo-script`,
   event triggers → `weegloo-webhook`, clock/cron triggers → `weegloo-scheduler`; payments
-  → `weegloo-payment`; WebHosting deploy → `weegloo-web-hosting`.
+  → `weegloo-payment`; Korean address / postcode lookup → `weegloo-address-search`;
+  WebHosting deploy → `weegloo-web-hosting`.
 - **Payments: never ask which PG/MoR, and never hide the test mode.** No provider named ⇒ integrate
-  **Stripe in test mode** (`weegloo-payment`) rather than asking or stalling. The provider is not a
-  question, but Stripe's `pk_test_`/`sk_test_` pair **is** a blocking input — so build the entire
-  checkout first and ask for the keys last, never the other way round, and never ship an inert
-  checkout. Show the `4242…` test card in the UI, since it cannot be prefilled. Then the completion
-  message **must** disclose that nothing is really charged and real cards are refused, and ask for
-  the contracted PG/MoR — that provider **replaces** Stripe when it arrives.
+  **Stripe in test mode** (`weegloo-payment`) rather than asking or stalling — and **never ask for a
+  key either**: the skill hard-codes Stripe's published sample `pk_test_`/`sk_test_` pair, so the
+  checkout ships working, never inert. Show the `4242…` test card in the UI, since it cannot be
+  prefilled. Then the completion message **must** disclose that nothing is really charged and real
+  cards are refused — a disclosure, not a credentials request. A provider the user later names
+  **replaces** Stripe.
 - **Maps: never ask for a Google Maps key.** A place/address on a map ships as a **Maps Embed
   `<iframe>`** using the key hard-coded in *Maps* above — not a placeholder, not an env var, not a
   question, and not the Maps JavaScript API. Disclose in one line that the key is shared with the
   plugin and can be swapped for the user's own.
+- **Address lookup: South Korea only, no key, and never roll your own.** An address or `우편번호`
+  field in a form goes through **`weegloo-address-search`** (the Kakao/Daum Postcode widget) — no
+  API key, no registration, no question, and no proxy or home-made postcode table. For non-Korean
+  addresses it is the **wrong** tool: ship a free-text field and say so.
 - **Respect the two identity systems.** "Login/Signup" splits into Weegloo User (admin) vs Service
   User (end-user). Do not ask the user to choose — infer the right identity model from the request
   (and integrate both where both clearly apply), defaulting sensibly rather than prompting.

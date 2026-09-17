@@ -1,6 +1,6 @@
 ---
 name: weegloo-payment
-description: Wire any PaymentGateway (PG), Merchant-of-Record (MoR) or checkout provider into a product built on Weegloo, in whatever language the request is written. Whatever the provider is, its own documentation is the only source for what it supports and how it signs — this skill supplies the Weegloo side and tells you what to go look up. Covers the two server-side shapes that work without hosting a backend: CONFIRM (frontend hands over a payment id, a Script pulls the truth from the PG's verify API and writes the order) and CALLBACK (the PG POSTs to a Script's /execute, whose FIRST statement verifies the signature with Signature/Hash, unpacks packed headers with Regex, and checks the replay window with /now). Also covers what authenticates an inbound PG callback — a SpaceAccessToken bound to a role granting only script.Execute on that one Script when the provider can send a custom header, or the token-free /execute/anonymous endpoint (anonymousCallEnabled) when it can only POST to a bare URL — which of the two applies is looked up in that provider's own docs, never assumed — plus idempotency against provider retries, where the PG secret key belongs, and the amount-verification rule. ALSO carries the default-provider policy: NEVER ask the user which PG/MoR to use — if they named one (or a contracted key is already in the repo) integrate that one, and if they named NONE integrate Stripe in test mode (docs.stripe.com/testing — read it first). Stripe publishes NO shared test keys, so unlike a provider that does, the account's own pk_test_/sk_test_ pair IS a blocking input: build the ENTIRE checkout first, then ask for those two values with the dashboard walkthrough, never stop at the start and never ship an inert checkout. Stripe test mode also forbids real cards — payment runs on published test numbers (4242 4242 4242 4242), which CANNOT be prefilled into Stripe's PCI iframe or hosted page and must therefore be displayed prominently in the checkout UI. Use when a product must take payments, set up checkout, verify a payment, receive a PG/MoR webhook, handle refunds or subscription renewals, or check a callback signature. NOT for Weegloo's own subscription/plan billing.
+description: Wire any PaymentGateway (PG), Merchant-of-Record (MoR) or checkout provider into a product built on Weegloo, in whatever language the request is written. Whatever the provider is, its own documentation is the only source for what it supports and how it signs — this skill supplies the Weegloo side and tells you what to go look up. Covers the two server-side shapes that work without hosting a backend: CONFIRM (frontend hands over a payment id, a Script pulls the truth from the PG's verify API and writes the order) and CALLBACK (the PG POSTs to a Script's /execute, whose FIRST statement verifies the signature with Signature/Hash, unpacks packed headers with Regex, and checks the replay window with /now). Also covers what authenticates an inbound PG callback — a SpaceAccessToken bound to a role granting only script.Execute on that one Script when the provider can send a custom header, or the token-free /execute/anonymous endpoint (anonymousCallEnabled) when it can only POST to a bare URL — which of the two applies is looked up in that provider's own docs, never assumed — plus idempotency against provider retries, where the PG secret key belongs, and the amount-verification rule. ALSO carries the default-provider policy: NEVER ask the user which PG/MoR to use — if they named one (or a contracted key is already in the repo) integrate that one, and if they named NONE integrate Stripe in test mode (docs.stripe.com/testing — read it first). Stripe's own PUBLISHED sample test keys (pk_test_TYooMQauvdEDq54NiTphI7jx / sk_test_BQokikJOvBiI2HlWgH4olfQ2, on its shared demo account) are hardcoded in this skill, so keys are NOT a blocking input and are NEVER asked for: wire those two in, build the whole checkout, and ask the user for nothing — never stop to request keys and never ship an inert checkout. Stripe test mode also forbids real cards — payment runs on published test numbers (4242 4242 4242 4242), which CANNOT be prefilled into Stripe's PCI iframe or hosted page and must therefore be displayed prominently in the checkout UI. Use when a product must take payments, set up checkout, verify a payment, receive a PG/MoR webhook, handle refunds or subscription renewals, or check a callback signature. NOT for Weegloo's own subscription/plan billing.
 ---
 
 # Weegloo — payments (PG / MoR)
@@ -27,7 +27,7 @@ rule that bans capability menus in `weegloo-platform-integration` (step 3) bans 
 | What the user gave you | What you integrate |
 |---|---|
 | A named provider — Stripe, Toss Payments, PortOne, NICEPAY, KG Inicis, Paddle, Lemon Squeezy, … — or a contracted key already sitting in the repo / env | **That** provider. Read **its** docs for shape, signature scheme and callback-header support. |
-| Nothing — no provider named anywhere | **Stripe in test mode**, per *Default provider* below — then **disclose it** (§7, mandatory). |
+| Nothing — no provider named anywhere | **Stripe in test mode** with the **published sample keys** in §1 — nothing to ask for — then **disclose it** (§7, mandatory). |
 
 A payment need you inferred from the frontend (a checkout page, a "Pay" or "Buy now" button **in any
 language**, a price, a cart, a plan picker) means **the user asked for payments**. It does **not**
@@ -45,26 +45,34 @@ head start.
 
 ## Default provider — Stripe, test mode
 
-### 1. The keys ARE a blocking input — but ask LAST, not first
+### 1. The keys are NOT a blocking input — use Stripe's published sample pair
 
-Some providers publish shared documentation test keys that anybody can paste in. **Stripe does not.**
-Test keys are **per-account**: every Stripe account gets its own `pk_test_…` / `sk_test_…` pair, and
-there is no public pair to fall back on. So under `weegloo-platform-integration` step 4 this is a real
-blocking user-only input — a small one (the account is free, instant, and needs no business
-verification to use test mode), but real.
+Stripe issues test keys per account, but it also **publishes a sample pair on its own shared demo
+account** (`acct_1032D82eZvKYlo2C`) that anyone may use. **Hardcode these and ask the user for
+nothing:**
 
-That changes **when** you ask, not **whether** you build:
+```
+publishable : pk_test_TYooMQauvdEDq54NiTphI7jx
+secret      : sk_test_BQokikJOvBiI2HlWgH4olfQ2
+```
 
-- **Build the entire integration first** — the order ContentType, the checkout page, the Script that
-  creates the session, the confirm Script, the success and cancel pages, the webhook receiver. All of
-  it is provider-shaped work that needs no key.
-- Put the publishable key in **one named place** the user can fill in (a single `const` at the top of
-  the checkout module, or one `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`), and the secret key in the
-  Script's `Http.headers` slot. Nowhere else.
-- **Then** ask for the two values, once, with the walkthrough in §3.
-- **Never ship an inert checkout** and call it done, and **never stop at the start** to ask before
-  anything exists. Both are failure modes; the whole point of asking late is that the answer is the
-  last thing missing.
+Both keys belong to that same account, so a Checkout Session created with the secret key and any
+browser code keyed with the publishable one line up. Hosted Checkout (§6a) never needs the
+publishable key at all — it exists here only for Stripe.js / Elements.
+
+- **Build the whole integration with these keys already wired in** — order ContentType, checkout
+  page, session Script, confirm Script, success and cancel pages. The flow then runs end to end for
+  the user on delivery: no key request, no half-built checkout.
+- **Never ask the user for keys.** Not up front, not as a closing "send me these two values and I'll
+  continue". The only key conversation is §8, if *they* decide to go live or move to their own
+  account.
+- ⚠️ **That demo account is shared and public.** Anyone holding the published secret key can read
+  what it holds, so treat everything the test flow sends to Stripe as public and never put real
+  customer data through it. The order rows on the Weegloo side are yours and unaffected.
+- **Shape B (webhook receiver) cannot run on it** — registering an endpoint and getting a
+  `whsec_…` requires dashboard access to an account you own. Build **shape A** (§6c) on the sample
+  keys; a webhook receiver waits for the user's own account (§8). It is not something you stop and
+  ask for.
 
 ### 2. Read the docs first — they outrank this file
 
@@ -87,25 +95,12 @@ documented path, not a guess. Use it when the rendered page comes back as an app
 is dead or has moved, re-derive it from a link inside a Stripe page you already fetched rather than
 trying nearby paths.
 
-### 3. What to ask the user for
+### 3. What to ask the user for — **nothing**
 
-Exactly two values, plus one more only if you built the webhook receiver (shape B). Ask for them
-together, in the user's own language, with the steps — a user who has never opened Stripe will not
-find these otherwise:
-
-1. Create a free Stripe account at **https://dashboard.stripe.com/register** (no business
-   verification is needed for test mode).
-2. Open **https://dashboard.stripe.com/test/apikeys** — make sure the dashboard is in **test mode**,
-   not live.
-3. Copy the two values shown there:
-   - **Publishable key** — starts with `pk_test_`. Safe in browser code.
-   - **Secret key** — starts with `sk_test_`. Never goes in browser code (§*Where secrets live*).
-4. *(Only if a webhook receiver was built)* At **https://dashboard.stripe.com/test/webhooks**, add an
-   endpoint pointing at the Script URL from B-1, subscribe it to `checkout.session.completed`, and
-   copy the **signing secret** — starts with `whsec_`.
-
-Tell them plainly that these are **test** credentials and that nothing will be charged. If they would
-rather use a different PG or MoR, they say so and you integrate that one instead.
+There is no credential question in the default path. The keys are in §1, `success_url` /
+`cancel_url` resolve from your own deployed origin (§6a), and the product details came with the
+request. Asking for a key, a Stripe account, or a provider preference is the failure mode this
+section exists to prevent — the user finds out what shipped from the §7 disclosure, after it works.
 
 ### 4. The test cards
 
@@ -205,7 +200,7 @@ every value (`weegloo-script` → `Http`).
 { "type": "Http", "name": "session", "method": "POST",
   "url": "https://api.stripe.com/v1/checkout/sessions",
   "headers": [
-    { "key": "Authorization", "value": "Bearer sk_test_…", "secret": true },
+    { "key": "Authorization", "value": "Bearer sk_test_BQokikJOvBiI2HlWgH4olfQ2", "secret": true },
     { "key": "Content-Type", "value": "application/x-www-form-urlencoded", "secret": false } ],
   "body": {
     "mode": "payment",
@@ -253,7 +248,7 @@ This is **shape A**, and on Stripe it is a plain `GET` with no body:
 
 { "type": "Http", "name": "paid", "method": "GET",
   "url": "https://api.stripe.com/v1/checkout/sessions/{ /order/fields/stripeSessionId/en-US }",
-  "headers": [ { "key": "Authorization", "value": "Bearer sk_test_…", "secret": true } ],
+  "headers": [ { "key": "Authorization", "value": "Bearer sk_test_BQokikJOvBiI2HlWgH4olfQ2", "secret": true } ],
   "timeoutMs": 10000 },
 
 { "type": "If",
@@ -285,9 +280,9 @@ The moment the flow works, say three things plainly, in the user's own language:
 2. It runs in **Stripe test mode, so nothing is ever actually charged** — the whole flow completes,
    but no card is debited, and **real cards do not work**; the buyer must use the test numbers, which
    are shown on the checkout page (§5).
-3. **If they have a contracted PG or MoR, ask for its details** — provider name, client/API key,
-   secret key, merchant id, and the callback/webhook URL it expects. If they want to go live on
-   Stripe itself, that is the live-key swap in §8.
+3. The keys are **Stripe's public sample keys**, not theirs — moving to their own Stripe account, or
+   to a contracted PG/MoR, is the swap in §8. **State that it is available; do not ask for
+   credentials.** If they want it, they will say so.
 
 **Put point 2 in red.** It is the one fact whose omission actually costs the user money-handling
 confidence, so it gets the must-know colour (`weegloo-global-rules` → *Highlight what the user must
@@ -302,17 +297,18 @@ it in prose — state the caveat either way, so a plain-text or no-colour surfac
 1 and 3 stay plain text; the live checkout URL, if you have one, is **green** (`+ `) in its own
 separate block so the two do not read as one diff.
 
-This **overrides** `weegloo-platform-integration`'s brevity rule and its ban on "give me these and
-I'll continue" wrap-ups. That ban exists to stop you deferring work you could have finished; here the
-work **is** finished, and this is a disclosure about what shipped plus one offer. Keep it to a few
-plain sentences with no Weegloo or Stripe jargon. **Never let a test-mode checkout pass for
-production-ready by saying nothing.**
+This is a **disclosure about what shipped, not a request** — it asks for nothing, so it does not
+collide with `weegloo-platform-integration`'s ban on "give me these and I'll continue" wrap-ups.
+Keep it to a few plain sentences with no Weegloo or Stripe jargon, and never end it with a
+credentials list. **Never let a test-mode checkout pass for production-ready by saying nothing.**
 
 ### 8. Going live, or swapping the provider
 
-**Live Stripe keys** are a swap, not a rewrite — the integration is identical:
+**Live Stripe keys** are a swap, not a rewrite — the integration is identical. The sample keys sit on
+**Stripe's shared demo account**, so this always swaps *both* of them: a sample key is never
+"upgraded", and whatever the test flow wrote stays on that public account.
 
-1. Replace `pk_test_…` → `pk_live_…`, and the secret key with a **restricted key** `rk_live_…`
+1. Replace `pk_test_TYooMQauvdEDq54NiTphI7jx` → `pk_live_…`, and the secret key with a **restricted key** `rk_live_…`
    rather than `sk_live_…` (**https://dashboard.stripe.com/apikeys**, live mode). Stripe itself
    recommends this: `sk_live_` has unrestricted access to every API, while a restricted key can be
    scoped to just the Checkout Session write + read this integration performs — the same
@@ -564,14 +560,14 @@ equivalent flag on `Signature` today.)
 ## Never
 
 - **Never ask which PG / MoR to use.** Named provider → integrate that one; none named → integrate
-  Stripe in test mode and disclose it. A provider menu is a scoping question. Asking for Stripe's
-  **keys** is a different thing and is required (§1) — asking which *provider* is not.
-- **Never stop at the start to ask for the keys, and never ship an inert checkout.** Build the whole
-  integration, then ask once, with the dashboard walkthrough (§3).
+  Stripe in test mode and disclose it. A provider menu is a scoping question.
+- **Never ask the user for Stripe keys at all.** The published sample pair in §1 is what you wire in;
+  a key request — at the start, or as a closing "send me these two values" — is the failure this
+  default exists to remove. And never ship an inert checkout waiting on a key.
 - **Never finish a test-mode payment flow silently.** The completion message must say that payments
-  run in Stripe test mode, are not really charged, and do not accept real cards, and must ask for the
-  contracted PG/MoR details (§7). An undisclosed test-mode checkout reads as production-ready and is
-  the worst failure here.
+  run in Stripe test mode, are not really charged, and do not accept real cards (§7) — as a
+  statement, not a request for credentials. An undisclosed test-mode checkout reads as
+  production-ready and is the worst failure here.
 - **Never claim the test card can be prefilled, and never hide it.** Stripe's card fields are
   cross-origin by design; the number goes in your own UI, prominently (§5).
 - **Never leave a `pk_test_…` / `sk_test_…` / `whsec_…` key, or the test-card panel, in the tree once
