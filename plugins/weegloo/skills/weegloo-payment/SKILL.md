@@ -1,6 +1,6 @@
 ---
 name: weegloo-payment
-description: Wire any PaymentGateway (PG), Merchant-of-Record (MoR), 결제 PG or checkout provider into a product built on Weegloo. Whatever the provider is, its own documentation is the only source for what it supports and how it signs — this skill supplies the Weegloo side and tells you what to go look up. Covers the two server-side shapes that work without hosting a backend: CONFIRM (frontend hands over a payment id, a Script pulls the truth from the PG's verify API and writes the order) and CALLBACK (the PG POSTs to a Script's /execute, whose FIRST statement verifies the signature with Signature/Hash, unpacks packed headers with Regex, and checks the replay window with /now). Also covers what authenticates an inbound PG callback — a SpaceAccessToken bound to a role granting only script.Execute on that one Script when the provider can send a custom header, or the token-free /execute/anonymous endpoint (anonymousCallEnabled) when it can only POST to a bare URL — which of the two applies is looked up in that provider's own docs, never assumed — plus idempotency against provider retries, where the PG secret key belongs, and the amount-verification rule. ALSO carries the default-provider policy: NEVER ask the user which PG/MoR to use — if they named one (or a contracted key is already in the repo) integrate that one, and if they named NONE integrate Toss Payments on its public documentation test keys (docs.tosspayments.com/guides/v2/payment-widget/integration — read the page first; the test keys make a PG key a NON-blocking input, so build a working checkout without asking), then MANDATORILY disclose that payments run on test keys and nothing is really charged and ask for the contracted PG/MoR details, and rip Toss out entirely when those arrive. Use when a product must take payments, set up checkout, verify a payment, receive a PG/MoR webhook, handle refunds or subscription renewals, or check a callback signature. NOT for Weegloo's own subscription/plan billing.
+description: Wire any PaymentGateway (PG), Merchant-of-Record (MoR) or checkout provider into a product built on Weegloo, in whatever language the request is written. Whatever the provider is, its own documentation is the only source for what it supports and how it signs — this skill supplies the Weegloo side and tells you what to go look up. Covers the two server-side shapes that work without hosting a backend: CONFIRM (frontend hands over a payment id, a Script pulls the truth from the PG's verify API and writes the order) and CALLBACK (the PG POSTs to a Script's /execute, whose FIRST statement verifies the signature with Signature/Hash, unpacks packed headers with Regex, and checks the replay window with /now). Also covers what authenticates an inbound PG callback — a SpaceAccessToken bound to a role granting only script.Execute on that one Script when the provider can send a custom header, or the token-free /execute/anonymous endpoint (anonymousCallEnabled) when it can only POST to a bare URL — which of the two applies is looked up in that provider's own docs, never assumed — plus idempotency against provider retries, where the PG secret key belongs, and the amount-verification rule. ALSO carries the default-provider policy: NEVER ask the user which PG/MoR to use — if they named one (or a contracted key is already in the repo) integrate that one, and if they named NONE integrate Stripe in test mode (docs.stripe.com/testing — read it first). Stripe publishes NO shared test keys, so unlike a provider that does, the account's own pk_test_/sk_test_ pair IS a blocking input: build the ENTIRE checkout first, then ask for those two values with the dashboard walkthrough, never stop at the start and never ship an inert checkout. Stripe test mode also forbids real cards — payment runs on published test numbers (4242 4242 4242 4242), which CANNOT be prefilled into Stripe's PCI iframe or hosted page and must therefore be displayed prominently in the checkout UI. Use when a product must take payments, set up checkout, verify a payment, receive a PG/MoR webhook, handle refunds or subscription renewals, or check a callback signature. NOT for Weegloo's own subscription/plan billing.
 ---
 
 # Weegloo — payments (PG / MoR)
@@ -26,176 +26,264 @@ rule that bans capability menus in `weegloo-platform-integration` (step 3) bans 
 
 | What the user gave you | What you integrate |
 |---|---|
-| A named provider — Toss Payments, PortOne, NICEPAY, KG이니시스, Stripe, Paddle, Lemon Squeezy, … — or a contracted key already sitting in the repo / env | **That** provider. Read **its** docs for shape, signature scheme and callback-header support. |
-| Nothing — no provider named anywhere | **Toss Payments on documentation test keys**, silently, per *Default provider* below — then **disclose it** (§5, mandatory). |
+| A named provider — Stripe, Toss Payments, PortOne, NICEPAY, KG Inicis, Paddle, Lemon Squeezy, … — or a contracted key already sitting in the repo / env | **That** provider. Read **its** docs for shape, signature scheme and callback-header support. |
+| Nothing — no provider named anywhere | **Stripe in test mode**, per *Default provider* below — then **disclose it** (§7, mandatory). |
 
-A payment need you inferred from the frontend (a checkout page, a `결제하기` / "Pay" button, a price, a
-cart, a plan picker) means **the user asked for payments**. It does **not** mean they named a provider
+A payment need you inferred from the frontend (a checkout page, a "Pay" or "Buy now" button **in any
+language**, a price, a cart, a plan picker) means **the user asked for payments**. It does **not**
+mean they named a provider
 — that is exactly the case the default is for.
 
-**A named provider is binding — the Toss default does not apply to it, and is never a fallback.**
-Two follow-on cases, if they named one but sent no credentials:
-
-- **They named a provider other than Toss** (PortOne, NICEPAY, Stripe, …) → its key **is** a genuine
-  blocking input under `weegloo-platform-integration` step 4. Build everything that does not need it,
-  then **stop and ask for that provider's credentials**. Do **not** substitute Toss because the keys
-  have not arrived, and do **not** wire both "for now" — a provider the user did not choose is wrong
-  work, not a head start.
-- **They named Toss Payments itself** → use the documentation test keys below exactly as the default
-  path does, and §5's disclosure **still applies**: it discloses *test keys / nothing charged*, which
-  is true here too. Only the "why Toss" half of the disclosure drops, since they picked it.
+**A named provider is binding — the Stripe default does not apply to it, and is never a fallback.**
+If they named a provider other than Stripe but sent no credentials, its key **is** a genuine blocking
+input under `weegloo-platform-integration` step 4: build everything that does not need it, then stop
+and ask for **that** provider's credentials. Do **not** substitute Stripe because the keys have not
+arrived, and do **not** wire both "for now" — a provider the user did not choose is wrong work, not a
+head start.
 
 ---
 
-## Default provider — Toss Payments, test keys
+## Default provider — Stripe, test mode
 
-### Why this is not a blocking question
+### 1. The keys ARE a blocking input — but ask LAST, not first
 
-`weegloo-platform-integration` step 4 classes a third-party API key as a **blocking** user-only input:
-stop, ask, wait. **Payments are the exception.** Toss Payments publishes working documentation test
-keys, so a complete, clickable, end-to-end checkout is reachable with **zero input from the user**.
-Build it. Do **not** stop to ask for a PG key, and do **not** leave checkout inert "until they send
-credentials" — an inert capability is incomplete work.
+Some providers publish shared documentation test keys that anybody can paste in. **Stripe does not.**
+Test keys are **per-account**: every Stripe account gets its own `pk_test_…` / `sk_test_…` pair, and
+there is no public pair to fall back on. So under `weegloo-platform-integration` step 4 this is a real
+blocking user-only input — a small one (the account is free, instant, and needs no business
+verification to use test mode), but real.
 
-### 1. Read the docs first — they outrank this file
+That changes **when** you ask, not **whether** you build:
 
-**https://docs.tosspayments.com/guides/v2/payment-widget/integration** — 주문서형 결제, the product
-formerly named 결제위젯. Read it before writing code, every time. Test keys rotate and SDK versions
-move; the values in §2 are what that page said when this skill was written, not a substitute for it.
-Where they disagree, **the page wins**.
+- **Build the entire integration first** — the order ContentType, the checkout page, the Script that
+  creates the session, the confirm Script, the success and cancel pages, the webhook receiver. All of
+  it is provider-shaped work that needs no key.
+- Put the publishable key in **one named place** the user can fill in (a single `const` at the top of
+  the checkout module, or one `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`), and the secret key in the
+  Script's `Http.headers` slot. Nowhere else.
+- **Then** ask for the two values, once, with the walkthrough in §3.
+- **Never ship an inert checkout** and call it done, and **never stop at the start** to ask before
+  anything exists. Both are failure modes; the whole point of asking late is that the answer is the
+  last thing missing.
 
-**If that URL is dead or has moved — 404, a redirect somewhere unrelated, or a page that is no longer
-the 주문서형 결제 integration guide — do NOT guess path variants.** Toss publishes a machine-readable
-index; use it exactly the way `weegloo-global-rules` has you use Weegloo's own:
+### 2. Read the docs first — they outrank this file
 
-1. Fetch **https://docs.tosspayments.com/llms.txt**.
-2. Take the **exact** path for the 주문서형 결제 / payment-widget integration guide from that index
-   (as of writing, `…/guides/v2/payment-widget/integration.md`).
-3. Fetch that path. Only paths you can point to in `llms.txt` are fair game — do not hand-build,
-   rename, or "try" nearby URLs.
+Read these before writing code, every time. Test behaviour and SDK versions move; what is written
+here is what those pages said when this skill was written, not a substitute for them. Where they
+disagree, **the page wins**.
 
-That index also lists a **LLM Quick Reference** (`…/guides/v2/get-started/llms-quick-reference.md`)
-and a **배포 체크리스트** — both worth reading if the primary guide is unclear or you are about to hand
-the integration over for real keys.
-
-**Two fetch quirks, both real, both encountered:**
-
-- **The rendered page gates narrow viewports** ("이 페이지는 PC에서만 이용할 수 있어요"). A plain
-  page-text fetch can come back with that notice and nothing else — use a desktop-width browser
-  viewport, or read the `.md` form.
-- **The `.md` form does not contain the key values.** It renders them as unexpanded components —
-  `<WidgetClientKey />`, `<WidgetSecretKey />` — because the real strings are injected client-side. So
-  the `.md` is good for the *flow and steps* but **useless for reading or re-verifying the test keys**;
-  for those you need the rendered page.
-
-If the documentation test keys are genuinely **gone**, or the flow no longer runs without a signed
-contract: do not improvise a different provider and do not ship a dead checkout — **stop and ask the
-user for their contracted PG/MoR details.** Only then is this a genuine blocking input under step 4.
-
-### 2. What the page specifies
-
-| | Value |
+| Page | What it settles |
 |---|---|
-| SDK | `<script src="https://js.tosspayments.com/v2/standard"></script>`, or `npm i @tosspayments/tosspayments-sdk` |
-| Test **client** key (browser) | `test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm` |
-| Test **secret** key (Script only) | `test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6` |
-| Confirm API | `POST https://api.tosspayments.com/v1/payments/confirm` |
-| Confirm auth | `Authorization: Basic base64("{secretKey}:")` — **the trailing colon is required** |
-| Confirm body | `paymentKey`, `orderId`, `amount` |
-| `successUrl` query params | `paymentType`, `orderId`, `paymentKey`, `amount` |
-| `failUrl` query params | `code`, `message`, `orderId` |
-| Charging | test keys approve **virtually** — no card or account is ever debited |
+| **https://docs.stripe.com/testing** | the test cards, and that real cards are forbidden in test mode |
+| **https://docs.stripe.com/keys** | key types and prefixes, where the user finds theirs |
+| **https://docs.stripe.com/checkout/quickstart** | the hosted-Checkout flow end to end |
+| **https://docs.stripe.com/api/checkout/sessions/create** | every Checkout Session parameter |
+| **https://docs.stripe.com/webhooks** | the signature scheme, retries, event shape |
+| **https://docs.stripe.com/currencies** | minor units and the zero-decimal list (§6b gotcha) |
 
-### 3. Client — render, then request
+**Fetching them:** every `docs.stripe.com` page also serves Markdown at the same path with **`.md`**
+appended — `https://docs.stripe.com/testing.md`. Stripe's own in-page links use that form, so it is a
+documented path, not a guess. Use it when the rendered page comes back as an app shell. If a URL here
+is dead or has moved, re-derive it from a link inside a Stripe page you already fetched rather than
+trying nearby paths.
 
-```js
-const tossPayments = TossPayments("test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm");
-const widgets = tossPayments.widgets({ customerKey });   // guests: TossPayments.ANONYMOUS
+### 3. What to ask the user for
 
-await widgets.setAmount({ currency: "KRW", value: total });
-await Promise.all([
-  widgets.renderPaymentMethods({ selector: "#payment-method", variantKey: "DEFAULT" }),
-  widgets.renderAgreement({ selector: "#agreement", variantKey: "AGREEMENT" }),
-]);
+Exactly two values, plus one more only if you built the webhook receiver (shape B). Ask for them
+together, in the user's own language, with the steps — a user who has never opened Stripe will not
+find these otherwise:
 
-// only after the UI has rendered
-await widgets.requestPayment({ orderId, orderName, successUrl, failUrl });
+1. Create a free Stripe account at **https://dashboard.stripe.com/register** (no business
+   verification is needed for test mode).
+2. Open **https://dashboard.stripe.com/test/apikeys** — make sure the dashboard is in **test mode**,
+   not live.
+3. Copy the two values shown there:
+   - **Publishable key** — starts with `pk_test_`. Safe in browser code.
+   - **Secret key** — starts with `sk_test_`. Never goes in browser code (§*Where secrets live*).
+4. *(Only if a webhook receiver was built)* At **https://dashboard.stripe.com/test/webhooks**, add an
+   endpoint pointing at the Script URL from B-1, subscribe it to `checkout.session.completed`, and
+   copy the **signing secret** — starts with `whsec_`.
+
+Tell them plainly that these are **test** credentials and that nothing will be charged. If they would
+rather use a different PG or MoR, they say so and you integrate that one instead.
+
+### 4. The test cards
+
+Test mode **refuses real cards** — the Stripe Services Agreement prohibits testing with real payment
+details, and the published numbers below are what it accepts instead.
+
+| Scenario | Card number |
+|---|---|
+| Payment succeeds | `4242 4242 4242 4242` |
+| Requires 3DS authentication | `4000 0025 0000 3155` |
+| Declined — insufficient funds | `4000 0000 0000 9995` |
+| Declined — generic | `4000 0000 0000 0002` |
+
+For all of them: **any future expiry** (e.g. `12/34`), **any 3-digit CVC** (4 digits for Amex), and
+**any value** for name, postal code and the other fields.
+
+### 5. The test card cannot be prefilled — put it on the page
+
+**There is no way to fill `4242…` in for the buyer.** Stripe's card fields live either on Stripe's own
+hosted Checkout page or inside a cross-origin Elements iframe; that isolation is what keeps the
+integration out of PCI scope, and it is exactly what makes prefilling impossible. No API does it,
+and scripting into the iframe is blocked by the browser.
+
+So **the number goes in your own UI**, where the buyer reads it before being sent to Stripe — visible
+without scrolling, next to the pay button, not in a tooltip or a collapsed section:
+
+```html
+<aside class="test-mode-notice" role="note">
+  <strong>Test mode — you will not be charged.</strong>
+  <dl>
+    <dt>Card number</dt><dd><code>4242 4242 4242 4242</code></dd>
+    <dt>Expiry</dt><dd>any future date (e.g. <code>12/34</code>)</dd>
+    <dt>CVC</dt><dd>any 3 digits (e.g. <code>123</code>)</dd>
+  </dl>
+</aside>
 ```
 
-- **Write the order to Weegloo BEFORE `requestPayment()`.** Toss requires `orderId` + `amount` to be
-  stored server-side first, and that stored row is the *only* amount you may trust at confirm time
-  (§4). Create the order Content with `status: "pending"` first, then request payment.
-- **`customerKey`** — a stable, unguessable per-buyer string for a signed-in Service User; never an
-  email, a sequential id, or anything a stranger could type. Guest checkout uses
-  `TossPayments.ANONYMOUS`.
-- **`successUrl` / `failUrl` must be absolute and actually reachable.** On Weegloo WebHosting that is
-  the deployed `…weegloo.app` origin — a **self-resolving** value in step 4's sense: set a placeholder,
-  deploy, then patch it. **Do not ask the user for it.**
-- These are **real navigations**, not client-side routes: the success and fail paths must resolve as
-  served URLs. A hash-only SPA router will 404 on them — add the routes to the static export, or
-  configure the SPA fallback, before you call the flow done.
-- **가상계좌 (virtual account)** is settled by a later deposit notification, not by confirm. If the
-  widget offers it, either turn it off in the payment admin or implement shape **B** for the deposit
-  webhook — otherwise those orders never become paid.
+Write it in the product's own language, and style it as a real callout — a bordered, tinted block —
+not as fine print. **Remove this block when live keys arrive** (§8); a test-card panel on a live
+checkout is worse than no panel at all.
 
-### 4. Server — the confirm Script
+---
 
-Toss is a **pull** provider, so this is **shape A**, unchanged in substance — same order read, same
-amount comparison, same write-back:
+## The flow — hosted Checkout
+
+Three moving parts: the frontend creates an order and asks a Script for a Checkout Session, Stripe
+runs the payment on its own page, and a second Script establishes what actually happened.
+
+### 6a. Client — create the order, then redirect
+
+```js
+// 1. write the order to Weegloo FIRST, status "pending" — this stored row is the ONLY
+//    amount you may trust later (§ shape A)
+const order = await createPendingOrder({ orderId, amountMinor, orderName });
+
+// 2. ask the Script for a Checkout Session
+const res = await fetch(
+  `https://script.weegloo.com/v1/spaces/${SPACE_ID}/scripts/${CREATE_SESSION_SCRIPT_ID}/execute`,
+  { method: "POST",
+    headers: { Authorization: `Bearer ${serviceUserToken}` },
+    body: JSON.stringify({ orderId }) }
+);
+const { url } = (await res.json()).return;
+
+// 3. hand the browser to Stripe — the Script has already stored the session id on the order
+window.location.href = url;          // a real navigation, not a client-side route
+```
+
+- **Write the order before creating the session.** The Script reads the amount from that row; an
+  amount the browser sends is a suggestion, not a fact.
+- **The Script stores the session id, not the browser.** It already holds the order row, so it
+  patches `stripeSessionId` on the way out (§6b). Leaving that to the client opens a hole: the buyer
+  is redirected to Stripe and pays, but the patch never lands — and confirm then has no session id to
+  look up, so a real payment is stuck unrecognised.
+- **`success_url` / `cancel_url` must be absolute and actually reachable.** On Weegloo WebHosting that
+  is the deployed `…weegloo.app` origin — a **self-resolving** value in step 4's sense: set a
+  placeholder, deploy, then patch it. **Do not ask the user for it.**
+- These are **real navigations**. A hash-only SPA router will 404 on the return — add the routes to
+  the static export, or configure the SPA fallback, before you call the flow done.
+- **Store the session id on the order and let the success page look it up by your own `orderId`.**
+  Stripe offers a `{CHECKOUT_SESSION_ID}` template for `success_url`, but a Weegloo Script's `url` is
+  itself a `{ … }` value-expression slot — keeping your own id out of that collision is simpler and
+  never ambiguous.
+
+### 6b. Server — create the Checkout Session
+
+**Stripe's v1 API takes its parameters in the query string.** It documents form-encoded request
+bodies, and a Script's `Http.body` is serialized as JSON, so the body is not the route — put every
+parameter in the `url` and send no body at all:
 
 ```jsonc
 { "type": "ResourceFind", "name": "order", "resource": "Content",
   "contentType": { "sys": { "id": "<orderCtId>" } },
   "where": { "createdBy": ":self", "fields.orderId": "{ /payload/orderId }" } },
 
-{ "type": "Http", "name": "confirmed", "method": "POST",
-  "url": "https://api.tosspayments.com/v1/payments/confirm",
-  "headers": [
-    { "key": "Authorization",
-      "value": "Basic dGVzdF9nc2tfZG9jc19PYVB6OEw1S2RtUVhrelJ6M3k0N0JNdzY6", "secret": true },
-    { "key": "Content-Type", "value": "application/json" } ],
-  "body": { "paymentKey": "{ /payload/paymentKey }", "orderId": "{ /payload/orderId }",
-            "amount": "{ /order/fields/amount/en-US }" } },
+// one single-line string — wrapped here only to be readable
+{ "type": "Http", "name": "session", "method": "POST",
+  "url": "https://api.stripe.com/v1/checkout/sessions?mode=payment&client_reference_id={ /order/fields/orderId/en-US }&success_url=https%3A%2F%2Fshop.weegloo.app%2Fsuccess%3ForderId%3D{ /order/fields/orderId/en-US }&cancel_url=https%3A%2F%2Fshop.weegloo.app%2Fcart&line_items[0][quantity]=1&line_items[0][price]={ /order/fields/stripePriceId/en-US }",
+  "headers": [ { "key": "Authorization", "value": "Bearer sk_test_…", "secret": true } ],
+  "timeoutMs": 10000 },
+
+// store the session id HERE, not from the browser — see §6a
+{ "type": "ResourcePatch", "resource": "Content",
+  "target": { "sys": { "id": "{ /order/sys/id }" } }, "locale": "en-US",
+  "fields": { "stripeSessionId": "{ /session/body/id }" } },
+
+{ "type": "Return", "value": { "url": "{ /session/body/url }" } }
+```
+
+- **Interpolate only URL-safe values.** Weegloo does not percent-encode what it substitutes into
+  `url`, so a product name with a space, `&` or `#` silently corrupts the request. Interpolate
+  **numbers** (`unit_amount`, `quantity`) and **id-shaped strings** (`orderId`, `price_…`) only.
+- **Prefer a Stripe `Price` id over inline `price_data`.** Creating Prices once in the Stripe
+  Dashboard and storing the `price_…` on your product Content keeps all free text out of the query
+  string. Use `line_items[0][price_data][…]` only when the amount is genuinely dynamic, and then keep
+  `product_data[name]` a fixed literal:
+  `&line_items[0][price_data][currency]=krw&line_items[0][price_data][unit_amount]={ /order/fields/amountMinor/en-US }&line_items[0][price_data][product_data][name]=Order`
+- **Nested parameters use bracket notation** — `line_items[0][price_data][currency]`. Stripe accepts
+  the brackets raw; percent-encode them (`%5B` / `%5D`) if anything in your toolchain objects.
+- **Amounts are in the currency's minor unit.** `1000` = 10 USD; for a **zero-decimal** currency such
+  as JPY (and KRW), `500` = 500 — no multiplication. Store the minor-unit integer on the order so the
+  Script never has to convert, and check the zero-decimal list on the currencies page rather than
+  assuming. Stripe also enforces a per-currency minimum (0.50 USD, 50 JPY, 50 KRW).
+- The secret key travels in `Authorization: Bearer …` with **`"secret": true`** — no base64, no Basic.
+
+### 6c. Server — confirm the payment
+
+This is **shape A**, and on Stripe it is a plain `GET` with no body:
+
+```jsonc
+{ "type": "ResourceFind", "name": "order", "resource": "Content",
+  "contentType": { "sys": { "id": "<orderCtId>" } },
+  "where": { "createdBy": ":self", "fields.orderId": "{ /payload/orderId }" } },
+
+{ "type": "Http", "name": "paid", "method": "GET",
+  "url": "https://api.stripe.com/v1/checkout/sessions/{ /order/fields/stripeSessionId/en-US }",
+  "headers": [ { "key": "Authorization", "value": "Bearer sk_test_…", "secret": true } ],
+  "timeoutMs": 10000 },
 
 { "type": "If",
   "condition": { "and": [
-      { "===": [ "{ /confirmed/body/status }", "DONE" ] },
-      { "===": [ "{ /confirmed/body/totalAmount }", "{ /order/fields/amount/en-US }" ] } ] },
+      { "===": [ "{ /paid/body/payment_status }", "paid" ] },
+      { "===": [ "{ /paid/body/amount_total }", "{ /order/fields/amountMinor/en-US }" ] } ] },
   "then": [ { "type": "ResourcePatch", "resource": "Content",
               "target": { "sys": { "id": "{ /order/sys/id }" } }, "locale": "en-US",
-              "fields": { "status": "paid", "paymentKey": "{ /payload/paymentKey }" } } ],
-  "else": [ { "type": "Return", "isError": true, "statusCode": 402, "value": "payment not confirmed" } ] }
+              "fields": { "status": "paid",
+                          "paymentIntentId": "{ /paid/body/payment_intent }" } } ],
+  "else": [ { "type": "Return", "isError": true, "statusCode": 402,
+              "value": "payment not confirmed" } ] }
 ```
 
-- **`amount` comes from `{ /order/… }`, never from `{ /payload/amount }`.** The `successUrl` query
-  param is client-controlled — comparing it to itself proves nothing.
-- **Precompute the `Basic` value.** A Script cannot base64-encode an arbitrary string, so encode
-  `secretKey + ":"` at authoring time and store the finished `Basic …` string with `"secret": true`.
-  The literal above is exactly `base64("test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6:")` — recompute it if
-  you use a different key.
-- **Store `paymentKey` and `orderId`** on the order; they are what later lookup and cancellation need.
+- **`amount_total` is compared against `{ /order/… }`, never against anything the caller sent.**
+- **Check `payment_status`, not `status`.** `status: "complete"` means the session finished;
+  `payment_status: "paid"` means the money moved. For a delayed-settlement method they differ.
+- **Store `payment_intent`** — it is what a later refund or lookup needs.
 - **Guest checkout** has no caller to resolve `:self` against — drop the `createdBy` filter and match
   on `orderId` alone, which then has to be long and random rather than sequential.
-- Toss's own failure codes (`NOT_FOUND_PAYMENT_SESSION`, `REJECT_CARD_COMPANY`, `UNAUTHORIZED_KEY`, …)
-  arrive as a `4XX` body — answer from `else` / `catch` and do not echo the provider message verbatim
-  to the buyer.
+- Stripe's failures arrive as a `4XX` body — answer from `else` / `catch` and do not echo the
+  provider message verbatim to the buyer.
 
-### 5. Tell the user — MANDATORY, not optional
+### 7. Tell the user — MANDATORY, not optional
 
 The moment the flow works, say three things plainly, in the user's own language:
 
-1. Payments were wired with **Toss Payments**, chosen because no provider was specified.
-2. It runs on **Toss's test keys, so nothing is ever actually charged** — the whole flow completes,
-   but no card or account is debited.
+1. Payments were wired with **Stripe**, chosen because no provider was specified.
+2. It runs in **Stripe test mode, so nothing is ever actually charged** — the whole flow completes,
+   but no card is debited, and **real cards do not work**; the buyer must use the test numbers, which
+   are shown on the checkout page (§5).
 3. **If they have a contracted PG or MoR, ask for its details** — provider name, client/API key,
-   secret key, merchant id, and the callback/webhook URL it expects.
+   secret key, merchant id, and the callback/webhook URL it expects. If they want to go live on
+   Stripe itself, that is the live-key swap in §8.
 
 **Put point 2 in red.** It is the one fact whose omission actually costs the user money-handling
 confidence, so it gets the must-know colour (`weegloo-global-rules` → *Highlight what the user must
 act on or must know*) — a `diff` fence, `- ` prefix, in the user's own language:
 
 ```diff
-- Payments run on Toss Payments TEST keys — no card or account is ever actually charged.
+- Payments run in Stripe TEST mode — nothing is ever charged, and real cards are refused.
 ```
 
 The `- ` is the red-rendering marker, not part of the sentence, and the block **never replaces** saying
@@ -206,17 +294,32 @@ separate block so the two do not read as one diff.
 This **overrides** `weegloo-platform-integration`'s brevity rule and its ban on "give me these and
 I'll continue" wrap-ups. That ban exists to stop you deferring work you could have finished; here the
 work **is** finished, and this is a disclosure about what shipped plus one offer. Keep it to a few
-plain sentences with no Weegloo or Toss jargon. **Never let a test-key checkout pass for
+plain sentences with no Weegloo or Stripe jargon. **Never let a test-mode checkout pass for
 production-ready by saying nothing.**
 
-### 6. When the real provider arrives — replace, do not layer
+### 8. Going live, or swapping the provider
 
-1. **Read that provider's docs first** — shape, signature scheme, callback-header support (§*Two
-   shapes*, B-1, B-3). Do not assume it behaves like Toss.
-2. **Remove the Toss integration entirely**: the SDK script tag / package, the widget render and
-   `requestPayment` code, Toss-specific `successUrl` / `failUrl` handling, the confirm Script's Toss
-   `Http` statement and its `Basic …` header, and **every `test_gck_…` / `test_gsk_…` string left in
-   the tree**. No dead Toss path, no orphan test key.
+**Live Stripe keys** are a swap, not a rewrite — the integration is identical:
+
+1. Replace `pk_test_…` → `pk_live_…`, and the secret key with a **restricted key** `rk_live_…`
+   rather than `sk_live_…` (**https://dashboard.stripe.com/apikeys**, live mode). Stripe itself
+   recommends this: `sk_live_` has unrestricted access to every API, while a restricted key can be
+   scoped to just the Checkout Session write + read this integration performs — the same
+   least-privilege reasoning as `weegloo-delivery-access-token`. Nothing else in the Script changes;
+   `Authorization: Bearer rk_live_…` is the same header.
+2. **Re-register the webhook endpoint in live mode and take the new `whsec_…`** — signing secrets are
+   per-endpoint *and* per-mode, so the test secret silently fails every live delivery.
+3. **Delete the test-card panel** (§5) and any `4242…` left in the tree.
+4. Walk **https://docs.stripe.com/get-started/checklist/go-live**. The account needs business
+   verification before it can accept real payments.
+
+**A different provider** is a replacement, not a layer:
+
+1. **Read that provider's docs first** — shape, signature scheme, callback-header support
+   (§*Two shapes*, B-1, B-3). Do not assume it behaves like Stripe.
+2. **Remove the Stripe integration entirely**: the session-creating Script, the confirm Script, the
+   redirect code, the success and cancel handling, the webhook receiver, the test-card panel, and
+   **every `pk_test_…` / `sk_test_…` / `whsec_…` string left in the tree**.
 3. **Keep what is provider-neutral**: the order / receipt / entitlement ContentTypes, the `:self`
    ownership scoping, the amount-verification rule, the idempotency receipt.
 4. **Re-verify the invariants**: amount read from your own record, signature checked as the first
@@ -232,10 +335,14 @@ production-ready by saying nothing.**
 | Truth comes from | an `Http` call to the PG's verify/confirm API | the request body + its signature |
 | Inside the Script | an outbound `Http` to the PG, then the write | verify + write only, no outbound call |
 | Endpoint | `…/execute` (your frontend holds a token) | `…/execute` with a token, or `…/execute/anonymous` with none — see B-1 |
-| Use for | checkout approval, "did this payment really go through" | refunds, disputes, subscription renewals, virtual-account deposits, anything you cannot pull |
+| Use for | checkout approval, "did this payment really go through" | refunds, disputes, subscription renewals, delayed settlement, anything you cannot pull |
 
 **Prefer A whenever the answer can be pulled.** It needs no signature verification, no inbound
-authentication, and no idempotency key — you are asking the authoritative source directly.
+authentication, and no idempotency key — you are asking the authoritative source directly. §6c is A.
+
+**Add B when the money can move without your frontend being there** — a subscription renewal, a
+dispute, an async payment method that settles minutes later. A buyer who closes the tab before the
+redirect is the ordinary case B covers.
 
 ---
 
@@ -245,33 +352,13 @@ authentication, and no idempotency key — you are asking the authoritative sour
    redirect params). It calls the Script with just those identifiers.
 2. The Script **reads the order it created earlier** (`ResourceRead` / `ResourceFind` with
    `where: { "createdBy": ":self" }`) to learn the **expected amount** — from your own record.
-3. `Http` GET/POST to the PG's confirm endpoint, secret key in a header with **`"secret": true`**.
+3. `Http` GET/POST to the PG's verify endpoint, secret key in a header with **`"secret": true`**.
 4. **Compare** the PG's reported amount + currency + order id against step 2. Mismatch ⇒ `Return`
    with `isError: true` and do not fulfil.
 5. `ResourceCreate` / `ResourcePatch` the order → paid, and only then grant the entitlement.
 
-```jsonc
-{ "type": "ResourceFind", "name": "order", "resource": "Content",
-  "contentType": { "sys": { "id": "<orderCtId>" } },
-  "where": { "createdBy": ":self", "fields.orderId": "{ /payload/orderId }" } },
-
-{ "type": "Http", "name": "confirmed", "method": "POST",
-  "url": "https://api.pg.example/v1/payments/confirm",
-  "headers": [ { "key": "Authorization", "value": "Basic <key>", "secret": true } ],
-  "body": { "paymentKey": "{ /payload/paymentKey }", "orderId": "{ /payload/orderId }",
-            "amount": "{ /order/fields/amount/en-US }" } },
-
-{ "type": "If",
-  "condition": { "and": [
-      { "===": [ "{ /confirmed/body/status }", "DONE" ] },
-      { "===": [ "{ /confirmed/body/totalAmount }", "{ /order/fields/amount/en-US }" ] } ] },
-  "then": [ { "type": "ResourcePatch", "resource": "Content", "target": { "sys": { "id": "{ /order/sys/id }" } },
-              "locale": "en-US", "fields": { "status": "paid" } } ],
-  "else": [ { "type": "Return", "isError": true, "statusCode": 402, "value": "payment not confirmed" } ] }
-```
-
-- **Send the amount you recorded, not the amount the caller sent.** A confirm call that the provider
-  itself amount-checks only protects you if the amount you send came from your own record.
+- **Send or compare the amount you recorded, not the amount the caller sent.** A verify call that the
+  provider itself amount-checks only protects you if the amount you sent came from your own record.
 - The PG round trip happens **inside the run**, while the frontend waits on `/execute` — keep the
   `Http` `timeoutMs` tight, and answer a failed or unconfirmed payment from `catch` / `else` rather
   than letting the run hit its budget. Budget: `weegloo-script`.
@@ -288,13 +375,16 @@ There are two, and one question picks for you:
 
 **Answer it from the provider's own webhook/notification documentation, per integration.** Do not
 assume, and do not trust a list — the answer differs by provider, by product line within a provider,
-and changes over time. Some let you attach arbitrary headers (or HTTP basic auth) to a notification
-endpoint; many only POST to whatever URL you paste in. Look it up before choosing a path.
+and changes over time.
+
+**For Stripe the answer is no.** A Stripe webhook endpoint is a bare URL; the dashboard offers no
+custom headers or basic auth. So a Stripe receiver uses the **anonymous** row below, and its
+signature check is the only thing authenticating the call.
 
 | If it can… | Register this URL | What authenticates the call |
 |---|---|---|
 | send a **custom header** | `https://script.weegloo.com/v1/spaces/{spaceId}/scripts/{scriptId}/execute` | a **`SpaceAccessToken`** in `Authorization: Bearer …` **and** the Script's signature check |
-| only POST to a **bare URL** | `https://script.weegloo.com/v1/spaces/{spaceId}/scripts/{scriptId}/execute/anonymous` | the Script's **signature check alone** |
+| only POST to a **bare URL** (Stripe) | `https://script.weegloo.com/v1/spaces/{spaceId}/scripts/{scriptId}/execute/anonymous` | the Script's **signature check alone** |
 
 The URL you paste into the provider's console is the **full** one above — Script execution is served by
 `script.weegloo.com`, not the CMA host (`weegloo-api-endpoints`).
@@ -322,7 +412,7 @@ that one endpoint. See `weegloo-space-access-token` and `weegloo-space-role`.
   caller to attribute to. No role permission is consulted — the flag is the whole decision.
 - The Script may not use the **`:self`** filter — refused when the Script is saved
   (**`WGL400061`**); with no caller to resolve it to, an ownership filter would widen to the author's
-  own rows.
+  own rows. Match on the provider's own reference instead (`client_reference_id`).
 - Anonymous calls still consume the Organization's Script-execution quota and nothing rate-limits
   them, so do not leave the flag on for a Script that verifies nothing.
 
@@ -340,82 +430,75 @@ call the provider has to wait for turns a receiver that should be instant into o
 provider's own timeout, and a PG that stopped waiting treats the delivery as failed and retries. If you
 must call out, verify + record here and let a `Webhook` on that write do the rest.
 
+Stripe expects a `2xx` **before** any slow work, and retries a non-`2xx` for up to three days in live
+mode (a few hours in a sandbox).
+
+### B-3. Stripe's scheme, statement by statement
+
+Stripe's `Stripe-Signature` header packs a timestamp and one or more signatures:
+
+```
+Stripe-Signature: t=1492774577,v1=5257a869e7ecebeda32affa62cdca3fa51cad7e77a0e56ff536d0ce8e108d8bd
+```
+
+- The signed message is **`{timestamp}.{raw body}`** — a literal period between the two.
+- **HMAC-SHA256**, keyed with the endpoint's **`whsec_…` secret used verbatim**, prefix included.
+  Do not strip `whsec_`, and do not hex- or base64-decode it: `secretEncoding` stays **`Utf8`**.
+- The code is **hex**.
+
 ```jsonc
+{ "type": "Regex", "name": "sig", "mode": "Capture",
+  "pattern": "t=(\\d+),v1=([0-9a-f]{64})",
+  "value": "{ /headers/stripe-signature }" },
+
+{ "type": "If", "condition": { "!": "{ /sig }" },
+  "then": [ { "type": "Return", "isError": true, "statusCode": 401, "value": "bad signature" } ] },
+
 { "type": "Signature", "name": "verified", "algorithm": "SHA256",
-  "secret": "<webhook signing secret>",
-  "value": "{ /rawPayload }",
-  "expected": "{ /headers/x-provider-signature }" },
+  "secret": "whsec_…", "secretEncoding": "Utf8",
+  "value": "{ /sig/1 }.{ /rawPayload }",
+  "expected": "{ /sig/2 }" },
 
 { "type": "If", "condition": { "!": "{ /verified }" },
   "then": [ { "type": "Return", "isError": true, "statusCode": 401, "value": "bad signature" } ] }
 ```
 
+- ⚠️ **Do not anchor the pattern with `^…$`.** For test events Stripe appends a second, fake `v0=…`
+  scheme, and a rolled secret adds a second `v1=…` — an anchored pattern matches neither, so the
+  receiver rejects every delivery while looking correct. Ignore any scheme that is not `v1`.
 - **Sign `{ /rawPayload }`** — the caller's body exactly as received. A re-serialized object has
-  different bytes and will never match.
-- Header names arrive **lower-cased**, whatever case the provider sent: `{ /headers/x-provider-signature }`.
+  different bytes and will never match. This is the single most common cause of a failing Stripe
+  signature check.
+- Header names arrive **lower-cased**, whatever case the provider sent: `{ /headers/stripe-signature }`.
+- `Capture` binds a list — index `0` is the whole match, `1..n` the groups — read by pointer. Two
+  pointers in one string already concatenate, so `"{ /sig/1 }.{ /rawPayload }"` needs no `$cat`.
 - **Nothing before the check.** No read, no write, no `SetVar` off the payload.
 
-### B-3. Read the provider's scheme, then map its shape to statements
-
-**Start by extracting four things from the provider's signature documentation** — these are what the
-statements need, and guessing any of them produces a check that fails every time:
-
-1. **Which header** carries the signature, and whether it holds the bare code or a packed structure.
-2. **What exactly is signed** — the raw body alone, or a string built from it (a timestamp, a message
-   id, a joined field list). Byte-for-byte.
-3. **How the code is written** — hex or base64. (You do not have to act on this: `Signature` accepts
-   either. Worth knowing so you can tell a wrong scheme from a wrong encoding.)
-4. **How the secret was issued to you** — plain text, hex, or base64. This one you *must* act on
-   (`secretEncoding`); the wrong choice is a different key and never matches.
-
-Then map the shape you found. This table is the **shape → statement** vocabulary, not a claim about
-any provider:
+**Other providers** sign differently. This is the **shape → statement** vocabulary to map onto
+whatever their docs describe — start by extracting four things from their signature documentation:
+which header carries the code, exactly what bytes are signed, hex vs base64 (`Signature` accepts
+either, so this is diagnostic only), and how the secret itself was issued (this one you *must* act on
+via `secretEncoding` — the wrong choice is a different key and never matches).
 
 | The scheme's shape | Statements |
 |---|---|
 | Keyed hash of the raw body, code sits alone in a header | `Signature` |
 | Signing key issued **hex**- or **base64**-encoded | `Signature` + `secretEncoding: "Hex"` / `"Base64"` |
-| Signature header packs several values, e.g. `t=…,v1=…` or `ts=…;h1=…`, and the timestamp is part of the signed message | `Regex` `Capture` → `Signature` over `"{ /sig/1 }.{ /rawPayload }"` |
+| Signature header packs several values, e.g. `t=…,v1=…` (Stripe) or `ts=…;h1=…` | `Regex` `Capture` → `Signature` over the assembled message |
 | Signed message joins values from **separate** headers | `Signature` over `"{ /headers/a }.{ /headers/b }.{ /rawPayload }"` |
 | **Keyless** salted digest — a hash of concatenated fields *including* a shared secret | `Hash` + compare with `$===` |
 | Legacy `MD5(…)` digest | `Hash` with `algorithm: "MD5"` |
 | Asymmetric signature (RSA/ECDSA), or a scheme requiring a fetched certificate | **not covered** — `Signature` is keyed-hash only; use shape A instead |
 
-**Packed header, end to end** — the header here holds `t=<timestamp>,v1=<hex>` and the signed message
-is `"{timestamp}.{body}"`; adapt the pattern and the assembled message to the scheme you read:
-
-```jsonc
-{ "type": "Regex", "name": "sig", "mode": "Capture",
-  "pattern": "^t=(\\d+),v1=([0-9a-f]{64})$",
-  "value": "{ /headers/x-provider-signature }" },
-
-{ "type": "Signature", "name": "verified", "algorithm": "SHA256",
-  "secret": "<the provider's signing secret>",
-  "value": "{ /sig/1 }.{ /rawPayload }",
-  "expected": "{ /sig/2 }" },
-```
-
-`Capture` binds a list — index `0` is the whole match, `1..n` the groups — read by pointer
-(`{ /sig/1 }`). Two pointers in one string already concatenate, so building the signed message needs
-no `$cat`; reach for `$cat` only when a piece is a computed value rather than a pointer or literal.
-
-**Keyless digest** - a hash of concatenated fields with the shared key folded in at the position that scheme puts it:
-
-```jsonc
-{ "type": "Hash", "name": "expected", "algorithm": "SHA256", "encoding": "Hex",
-  "value": "{ /payload/merchantId }{ /payload/timestamp }{ /payload/orderId }{ /payload/amount }<sharedKey>" },
-
-{ "type": "If", "condition": { "!==": [ "{ /expected }", "{ /payload/signData }" ] },
-  "then": [ { "type": "Return", "isError": true, "statusCode": 401, "value": "bad signature" } ] }
-```
-
-`Hash` has no `secret` field on purpose — schemes put the key in different positions, so write it
-into `value` wherever that scheme puts it. Mind `Hash`'s short **128-character** limit on what
-`value` resolves to; a long concatenation needs `Signature` (65,536) or fewer fields.
+`Hash` has no `secret` field on purpose — schemes put the key in different positions, so write it into
+`value` wherever that scheme puts it. Mind `Hash`'s short **128-character** limit on what `value`
+resolves to; a long concatenation needs `Signature` (65,536) or fewer fields. `Regex` `pattern` is
+capped at 128 characters too.
 
 ### B-4. Replay window
 
-Providers that sign a timestamp expect you to reject old deliveries. `/now/seconds` is the run's
+Stripe's own libraries reject a delivery whose timestamp is more than **5 minutes** old, and the
+timestamp is inside the signed message so it cannot be tampered with. `/now/seconds` is the run's
 clock (one reading per execution, so two statements cannot disagree):
 
 ```jsonc
@@ -426,16 +509,24 @@ clock (one reading per execution, so two statements cannot disagree):
 ```
 
 The captured timestamp is text; the arithmetic coerces it. `/now/millis` and `/now/iso` are the other
-two forms — `iso` is the same rendering as `sys.createdAt`, so it compares against one directly.
+two forms — `iso` is the same rendering as `sys.createdAt`, so it compares against one directly. Never
+use a tolerance of `0`; that disables the check entirely. Note that a Stripe **retry** carries a
+**fresh** timestamp and signature, so the window never rejects a legitimate retry — dedupe is B-5's
+job, not this one's.
 
 ### B-5. Idempotency — providers retry
 
-A retried delivery must not charge, credit or fulfil twice. **Key on the provider's own event or
-payment id**, not on arrival:
+A retried delivery must not charge, credit or fulfil twice. Stripe explicitly does not guarantee
+ordering or exactly-once delivery, so **key on `event.id`** (`evt_…`), not on arrival:
 
-1. `ResourceFind` a receipt Content by that id.
+1. `ResourceFind` a receipt Content by that `evt_…` id.
 2. If found ⇒ `Return` `200` immediately (a success, not an error — otherwise the PG keeps retrying).
 3. Otherwise write it, then do the work.
+
+The payload's `data.object` is the resource the event is about — for `checkout.session.completed`, the
+Checkout Session, carrying `client_reference_id`, `amount_total`, `currency` and `payment_status`.
+Verify the amount against your own order row here exactly as in shape A; a verified signature proves
+*Stripe sent this*, not *this is the order you think it is*.
 
 For a counter or balance that two deliveries could race on, pass the row's **`sys.version`** as the
 write's `version` (optimistic lock) and let `Try` handle the conflict — see `weegloo-script`.
@@ -449,9 +540,10 @@ fire Webhooks. Set `propagateEvents: true` on the write that should trigger down
 
 | Secret | Goes in |
 |---|---|
-| PG **API/secret key** (for confirm calls) | `Http.headers` entry with **`"secret": true`** |
-| **Webhook signing secret** | `Signature.secret` / inside `Hash.value` |
-| Callback **auth token** (token path) | the `SpaceAccessToken` you register with the PG, not in the Script |
+| Stripe **secret key** (`sk_…`, for session creation and confirm) | `Http.headers` entry with **`"secret": true`** |
+| Stripe **webhook signing secret** (`whsec_…`) | `Signature.secret`, `secretEncoding: "Utf8"` |
+| Stripe **publishable key** (`pk_…`) | browser code — this one is safe to expose |
+| Callback **auth token** (token path, non-Stripe providers) | the `SpaceAccessToken` you register with the PG, not in the Script |
 
 ⚠️ **A `Signature.secret` written into a Script definition is stored as authored and is readable by
 anyone who can read that Script.** Keep Script `Read` off end-user roles, and treat the signing secret
@@ -461,21 +553,32 @@ equivalent flag on `Signature` today.)
 ## Never
 
 - **Never ask which PG / MoR to use.** Named provider → integrate that one; none named → integrate
-  the Toss Payments test-key default and disclose it. A provider menu is a scoping question.
-- **Never finish a test-key payment flow silently.** The completion message must say that payments run
-  on Toss test keys and are not really charged, and ask for the contracted PG/MoR details (§5). An
-  undisclosed test-key checkout reads as production-ready and is the worst failure here.
-- **Never leave a `test_gck_…` / `test_gsk_…` key in the tree once real credentials exist** — replacing
-  a provider means removing the old integration, not layering over it (§6).
-- **Never put a secret key, or its `Basic …` header, in client code.** The client key is the only Toss
-  key the browser may see; the secret key lives in `Http.headers` with `"secret": true`.
+  Stripe in test mode and disclose it. A provider menu is a scoping question. Asking for Stripe's
+  **keys** is a different thing and is required (§1) — asking which *provider* is not.
+- **Never stop at the start to ask for the keys, and never ship an inert checkout.** Build the whole
+  integration, then ask once, with the dashboard walkthrough (§3).
+- **Never finish a test-mode payment flow silently.** The completion message must say that payments
+  run in Stripe test mode, are not really charged, and do not accept real cards, and must ask for the
+  contracted PG/MoR details (§7). An undisclosed test-mode checkout reads as production-ready and is
+  the worst failure here.
+- **Never claim the test card can be prefilled, and never hide it.** Stripe's card fields are
+  cross-origin by design; the number goes in your own UI, prominently (§5).
+- **Never leave a `pk_test_…` / `sk_test_…` / `whsec_…` key, or the test-card panel, in the tree once
+  live credentials exist** — going live means removing the test path, not layering over it (§8).
+- **Never reuse a test webhook signing secret in live mode.** Signing secrets are per-endpoint and
+  per-mode; the wrong one fails every delivery with a valid-looking signature error.
+- **Never put the secret key in client code.** The publishable key is the only Stripe key the browser
+  may see; `sk_…` lives in `Http.headers` with `"secret": true`.
+- **Never interpolate free text into a Stripe query-string parameter.** Weegloo does not
+  percent-encode substituted values; numbers and id-shaped strings only (§6b).
 - **Never trust a client-reported amount, currency or status.** Read the amount from your own order
-  record, or from the PG's API response.
+  record, or from the PG's API response, in the currency's minor unit.
 - **Never store card data** — PAN, CVC, expiry — in Content, Media, or a Script payload. Use the PG's
   tokenization; that is what it is for.
+- **Never anchor the `Stripe-Signature` pattern with `^…$`** — the extra `v0=` on test events and the
+  second `v1=` during a secret roll both break it (B-3).
 - **Never skip signature verification because the callback URL is secret.** A URL is not a secret, and
-  a callback token authenticates *that it is your endpoint*, not *that the PG sent this body* — and on
-  the anonymous endpoint there is no token either.
+  on Stripe's anonymous endpoint there is no token either.
 - **Never set `anonymousCallEnabled` on a Script that verifies nothing.** That publishes an endpoint
   which runs with the author's authority to anyone who finds the URL.
 - **Never fulfil in the browser** — grant the entitlement from the Script that established payment.
@@ -489,6 +592,6 @@ equivalent flag on `Signature` today.)
 - `weegloo-create-content-type` — modelling the order / receipt / entitlement ContentTypes.
 - `weegloo-webhook` — reacting to *your own* Space events after a payment is recorded.
 - `weegloo-service-login` — identifying the buyer (`createdBy :self` ownership).
-- `weegloo-web-hosting` — the deployed origin that `successUrl` / `failUrl` must point at.
+- `weegloo-web-hosting` — the deployed origin that `success_url` / `cancel_url` must point at.
 - `weegloo-platform-integration` — the router whose step 3 (don't ask scoping questions), step 4
   (just-in-time blocking inputs) and brevity rule this skill's default-provider policy specialises.
