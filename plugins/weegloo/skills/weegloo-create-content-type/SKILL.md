@@ -1,6 +1,6 @@
 ---
 name: weegloo-create-content-type
-description: Creates or designs a ContentType in Weegloo — content modeling, schema and field design, choosing a field's type. Covers localized vs localized-false fields, ShortText vs LongText vs RichText (search semantics), FieldValidation, publishWithAuthor, and Refer relationships, plus soft guidance. Use when modeling content for a new app, defining fields/schema, deciding ShortText/LongText/RichText for a field (e.g. a note/post body), or before proposing or finalizing ANY ContentType. English only.
+description: Creates or designs a ContentType in Weegloo — content modeling, schema and field design, choosing a field's type. Covers localized vs localized-false fields, ShortText vs LongText vs RichText (search semantics), FieldValidation, publishWithAuthor, displayField (the console label), and Refer relationships, plus soft guidance. Use when modeling content for a new app, defining fields/schema, deciding ShortText/LongText/RichText for a field (e.g. a note/post body), or before proposing or finalizing ANY ContentType. English only.
 ---
 
 # Weegloo Create ContentType
@@ -53,7 +53,8 @@ without need burns API capacity and forces re-migration.
 2. For **each field**, decide **`localized: true` vs `false`** (see **`localized` flag** section next)-before types and validations.
 3. **Assign `ShortText` / `LongText` / `RichText` using the search-semantics section below** - not by gut feel from the words “short”, “long”, or “rich”.
 4. **Design fields → add `validations` only where it clearly helps** (see soft guidance below + `FieldValidation` reference).
-5. `cma_CreateContentType` / `cma_UpdateOneContentType` / `cma_PatchOneContentType` all **auto-publish on success** — no separate `cma_PublishOneContentType` call needed in the standard create/edit flow. Call `cma_PublishOneContentType` directly only when the ContentType is in a non-Published state — typically after an explicit `Unpublish`, or to recover a Draft left over from a create/edit whose chained publish step failed.
+5. **Set `displayField`** to the `apiName` of a `ShortText` field (see the section below) - do not leave it out when the type has one.
+6. `cma_CreateContentType` / `cma_UpdateOneContentType` / `cma_PatchOneContentType` all **auto-publish on success** — no separate `cma_PublishOneContentType` call needed in the standard create/edit flow. Call `cma_PublishOneContentType` directly only when the ContentType is in a non-Published state — typically after an explicit `Unpublish`, or to recover a Draft left over from a create/edit whose chained publish step failed.
 
 ---
 
@@ -85,6 +86,16 @@ Beyond `type` / `localized` / `validations`, each field definition carries two *
 
 - **`required`** (default `false`) — makes the field **mandatory**. There is **no "required" validation type**; mandatoriness is this flag. For a `required` **localized** field, Content create must supply a value for **every non-optional locale** (the space default is always non-optional) — see **`weegloo-default-locale`**. A non-`required` field has **no** locale-presence requirement.
 - **`disabled`** (default `false`) — disables the field without deleting it.
+
+---
+
+## `displayField` — the console label (stop omitting it)
+
+`displayField` is a **top-level string on the ContentType** (sibling of `name` / `fields` / `publishWithAuthor`), and its value is the **`apiName`** of the field the console shows as each entry's label. It is **optional in the schema — which is exactly why it keeps getting left out**, leaving an entry list the user cannot read at a glance.
+
+**Rule:** if the ContentType has any **`ShortText`** field, set `displayField` to that field's `apiName`. With several, pick the one that names the entry (`title`, `name`, …); otherwise take the first `ShortText` field. Omit `displayField` **only** when the type has **no** `ShortText` field.
+
+Resend it on every edit — `cma_UpdateOneContentType` is **full replacement**, so an update that drops `displayField` clears the label.
 
 ---
 
