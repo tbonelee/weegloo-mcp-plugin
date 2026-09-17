@@ -1,6 +1,6 @@
 ---
 name: weegloo-service-login
-description: Use BEFORE any general brainstorming for end-user sign-in features. ServiceLogin — the Space's own end-user sign-up/sign-in system, separate from Weegloo platform accounts. Covers ServiceLogin + ServiceUserRole + ServiceUser (roleOverride); Bearer Token for ACMA / ACDA / Upload (never CMA / CDA); current ServiceUser via ACMA GET /v1/me.
+description: Use BEFORE any general brainstorming for end-user sign-in features. ServiceLogin — the Space's own end-user sign-up/sign-in system, separate from Weegloo platform accounts. Covers ServiceLogin + ServiceUserRole + ServiceUser (roleOverride); Bearer Token for ACMA / ACDA / Upload (never CMA / CDA); current ServiceUser via ACMA GET /v1/me. ALSO: a ServiceUser can only be deleted from the console, so account deletion / withdrawal is modelled as a request ContentType the member writes via ACMA and an admin fulfils in the console - which is the in-app deletion path the App Store and Play Store require.
 ---
 
 # Weegloo — ServiceLogin (end-user sign-up for the product)
@@ -124,6 +124,30 @@ To fetch the **`ServiceUser`** for the active ServiceLogin session (profile, `ro
 - **Correct:** **`GET https://acma.weegloo.com/v1/me`** with **`Authorization: Bearer`** and the ServiceLogin access token.
 
 **Wrong (do not use):** **`GET https://acma.weegloo.com/v1/spaces/{spaceId}/me`**. ACMA does **not** expose the current member at a space-prefix path. **`auth.weegloo.com`** correctly uses **`/v1/spaces/{spaceId}/...`** for OAuth, which invites the mistaken pattern—but on **ACMA** the identity endpoint is **`/v1/me`** only.
+
+## Deleting a member — console only, so model withdrawal as a request
+
+**A `ServiceUser` can only be deleted from the Weegloo console.** The management endpoint requires a
+console session and is **not exposed as an MCP tool**, so nothing the product runs — ACMA, a PAT, a
+Script — can remove a member. Do not design a flow that deletes the account directly.
+
+Model withdrawal as **a request the member files and an admin fulfils**:
+
+1. **A ContentType for the request** — e.g. `account-deletion-request`, carrying the member's reason
+   and a status the admin moves along (**`weegloo-create-content-type`**).
+2. **The app writes one row through ACMA** as the signed-in `ServiceUser`, so `sys.createdBy` is that
+   member. Grant the role `Create` + `Read` scoped with `createdBy.sys.id: ":self"` so members see
+   only their own request — and **not** `Delete` (**`weegloo-space-role`**).
+3. **The admin reviews the queue in the console** and, if it checks out, deletes the `ServiceUser`
+   there.
+
+**This is what the mobile app stores expect.** Apple and Google require an account-deletion path the
+user can **start from inside the app**; neither requires the removal itself to be immediate or
+automatic, so an in-app request plus manual fulfilment satisfies them. What fails review is having no
+in-app path at all — or a queue nobody drains.
+
+**Keep any record you need outside the member's own rows** — the request Content is authored by the
+member, so it can be swept away with them when the account goes.
 
 ## Permission resolution per ServiceUser
 

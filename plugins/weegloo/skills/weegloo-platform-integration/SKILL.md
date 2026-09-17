@@ -460,6 +460,7 @@ static image and call it done.
 | Login                        | `weegloo-user-login` (admin) / `weegloo-service-login` (end-user); disambiguate via `weegloo-service-architecture` |
 | Signup                       | `weegloo-service-login`                                                   |
 | Social Login                 | `weegloo-service-login-client` (spine) + `weegloo-service-login-google` (Google), `weegloo-service-login-github` (GitHub), `weegloo-service-login-facebook` (Facebook), `weegloo-service-login-gitlab` (GitLab), `weegloo-service-login-kakao` (Kakao), `weegloo-service-login-naver` (Naver), `weegloo-service-login-line` (LINE). Infer provider from product; no default; don't ask. |
+| Account deletion / withdrawal (member leaves the product) | `weegloo-service-login` — **no API can delete a ServiceUser**, only the console. Model it as a request ContentType the member writes via ACMA + an admin who deletes them in the console; that in-app request path is what the App Store / Play Store require. |
 | Admin / Owner / Staff UI (dashboard, settings, moderation, all-member data) | `weegloo-user-login` (in-app admin via console FE popup → CMA) |
 | User Data (private/per-user) | `weegloo-service-architecture` + `weegloo-create-content-type` + `weegloo-space-role` |
 | Application Data             | `weegloo-create-content-type` + `weegloo-cma-json-patch` + `weegloo-cda-publish` |
