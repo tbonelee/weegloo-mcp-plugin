@@ -186,25 +186,36 @@ window.location.href = url;          // a real navigation, not a client-side rou
 - These are **real navigations**. A hash-only SPA router will 404 on the return — add the routes to
   the static export, or configure the SPA fallback, before you call the flow done.
 - **Store the session id on the order and let the success page look it up by your own `orderId`.**
-  Stripe offers a `{CHECKOUT_SESSION_ID}` template for `success_url`, but a Weegloo Script's `url` is
-  itself a `{ … }` value-expression slot — keeping your own id out of that collision is simpler and
-  never ambiguous.
+  Stripe offers a `{CHECKOUT_SESSION_ID}` template for `success_url`, but the Script writes that URL
+  in a `{ … }` value-expression slot — keeping your own id out of that collision is simpler and never
+  ambiguous.
 
 ### 6b. Server — create the Checkout Session
 
-**Stripe's v1 API takes its parameters in the query string.** It documents form-encoded request
-bodies, and a Script's `Http.body` is serialized as JSON, so the body is not the route — put every
-parameter in the `url` and send no body at all:
+**Stripe's v1 API takes a form-encoded request body**, and that is what a Script sends when the
+`Content-Type` header says so: declare **`application/x-www-form-urlencoded`** and write `body` as an
+ordinary nested object — the engine flattens it into Stripe's bracket notation and percent-encodes
+every value (`weegloo-script` → `Http`).
 
 ```jsonc
 { "type": "ResourceFind", "name": "order", "resource": "Content",
   "contentType": { "sys": { "id": "<orderCtId>" } },
   "where": { "createdBy": ":self", "fields.orderId": "{ /payload/orderId }" } },
 
-// one single-line string — wrapped here only to be readable
 { "type": "Http", "name": "session", "method": "POST",
-  "url": "https://api.stripe.com/v1/checkout/sessions?mode=payment&client_reference_id={ /order/fields/orderId/en-US }&success_url=https%3A%2F%2Fshop.weegloo.app%2Fsuccess%3ForderId%3D{ /order/fields/orderId/en-US }&cancel_url=https%3A%2F%2Fshop.weegloo.app%2Fcart&line_items[0][quantity]=1&line_items[0][price]={ /order/fields/stripePriceId/en-US }",
-  "headers": [ { "key": "Authorization", "value": "Bearer sk_test_…", "secret": true } ],
+  "url": "https://api.stripe.com/v1/checkout/sessions",
+  "headers": [
+    { "key": "Authorization", "value": "Bearer sk_test_…", "secret": true },
+    { "key": "Content-Type", "value": "application/x-www-form-urlencoded", "secret": false } ],
+  "body": {
+    "mode": "payment",
+    "client_reference_id": "{ /order/fields/orderId/en-US }",
+    "success_url": "https://shop.weegloo.app/success?orderId={ /order/fields/orderId/en-US }",
+    "cancel_url": "https://shop.weegloo.app/cart",
+    "line_items": [ { "quantity": 1, "price_data": {
+        "currency": "krw",
+        "unit_amount": "{ /order/fields/amountMinor/en-US }",
+        "product_data": { "name": "{ /order/fields/orderName/en-US }" } } } ] },
   "timeoutMs": 10000 },
 
 // store the session id HERE, not from the browser — see §6a
@@ -215,16 +226,16 @@ parameter in the `url` and send no body at all:
 { "type": "Return", "value": { "url": "{ /session/body/url }" } }
 ```
 
-- **Interpolate only URL-safe values.** Weegloo does not percent-encode what it substitutes into
-  `url`, so a product name with a space, `&` or `#` silently corrupts the request. Interpolate
-  **numbers** (`unit_amount`, `quantity`) and **id-shaped strings** (`orderId`, `price_…`) only.
-- **Prefer a Stripe `Price` id over inline `price_data`.** Creating Prices once in the Stripe
-  Dashboard and storing the `price_…` on your product Content keeps all free text out of the query
-  string. Use `line_items[0][price_data][…]` only when the amount is genuinely dynamic, and then keep
-  `product_data[name]` a fixed literal:
-  `&line_items[0][price_data][currency]=krw&line_items[0][price_data][unit_amount]={ /order/fields/amountMinor/en-US }&line_items[0][price_data][product_data][name]=Order`
-- **Nested parameters use bracket notation** — `line_items[0][price_data][currency]`. Stripe accepts
-  the brackets raw; percent-encode them (`%5B` / `%5D`) if anything in your toolchain objects.
+- **Write the object, not the brackets.** `line_items` above goes out as
+  `line_items[0][quantity]=1&line_items[0][price_data][currency]=krw&…` — exactly Stripe's shape.
+  Arrays are indexed from `0`; do not hand-write `line_items[0][…]` as a key yourself.
+- **Free text is safe here.** Values are percent-encoded UTF-8, so a `product_data[name]` with
+  spaces, `&` or `#` survives intact. That holds for the **body** only — a value interpolated into
+  `url` is **not** encoded, which is one more reason to keep parameters in the body and the URL bare.
+- **A `Price` id instead of inline `price_data`** — `"line_items": [ { "quantity": 1, "price":
+  "{ /order/fields/stripePriceId/en-US }" } ]` — is the better fit when the catalogue is fixed:
+  Stripe owns the price, so the amount cannot drift between your Content and the charge. Use
+  `price_data` when the amount is genuinely dynamic.
 - **Amounts are in the currency's minor unit.** `1000` = 10 USD; for a **zero-decimal** currency such
   as JPY (and KRW), `500` = 500 — no multiplication. Store the minor-unit integer on the order so the
   Script never has to convert, and check the zero-decimal list on the currencies page rather than
@@ -569,8 +580,9 @@ equivalent flag on `Signature` today.)
   per-mode; the wrong one fails every delivery with a valid-looking signature error.
 - **Never put the secret key in client code.** The publishable key is the only Stripe key the browser
   may see; `sk_…` lives in `Http.headers` with `"secret": true`.
-- **Never interpolate free text into a Stripe query-string parameter.** Weegloo does not
-  percent-encode substituted values; numbers and id-shaped strings only (§6b).
+- **Never send Stripe parameters in the URL.** They belong in a form-urlencoded `body`, which the
+  engine percent-encodes; a value interpolated into `url` is not encoded, so free text there
+  corrupts the request (§6b).
 - **Never trust a client-reported amount, currency or status.** Read the amount from your own order
   record, or from the PG's API response, in the currency's minor unit.
 - **Never store card data** — PAN, CVC, expiry — in Content, Media, or a Script payload. Use the PG's
