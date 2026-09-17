@@ -261,6 +261,15 @@ the publish / archive family) carry a `target` instead, so they owe none.
   ServiceUsers, CMA-only), `body` (value expression / JSON), `timeoutMs` (per-call; omitted ⇒ **30s** default, hard cap **60s**),
   `retry` (default `0`; retries only when the response **status ≥ 400**; capped at 2),
   `ignoreStatusCode` (default `false`), `responseType` (**`json`** default | `text`).
+  **A `Content-Type` header decides how `body` is serialized** (there is no separate field for it, and the
+  comparison ignores case and `;charset=…`): none ⇒ **`application/json`**;
+  **`application/x-www-form-urlencoded`** ⇒ nested keys flattened into brackets —
+  `{ "user": { "name": "kim", "age": 42 } }` goes out as `user[name]=kim&user[age]=42`, arrays indexed
+  (`tags[0]=a`), `null` as an empty value (`memo=`), everything percent-encoded UTF-8 — which is what an
+  OAuth **token endpoint** wants; **`text/plain`** ⇒ the bare value with no JSON quotes. **A body the
+  declared type cannot carry is sent under one that can** — a scalar declared form-urlencoded goes out as
+  `text/plain;charset=UTF-8`, an object declared `text/plain` as `application/json` — so the header never
+  describes a body that is not there. Any other declared type keeps its header and sends JSON.
   Binds **`{ status, body }`**. **`responseType` decides what `body` is:** `json` parses it, so you
   address it with pointers (`{ /resp/body/items/0/id }`), and the statement **fails when the response is
   not JSON**; `text` binds the raw string — what a plain-text / XML / CSV endpoint needs, and what you
