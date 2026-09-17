@@ -1,6 +1,6 @@
 ---
 name: weegloo-web-hosting
-description: Use before any deploy to Weegloo WebHosting. Static-only (max 300 files in production, 100 by default). Covers ZIP layout, MCP upload, and WebHosting resource flow.
+description: Use before any deploy to Weegloo WebHosting. Static-only (max 300 files in production, 100 by default). Covers ZIP layout, MCP upload, and WebHosting resource flow. ALSO covers rewriting a deployed page's `<head>` metadata — title, description, canonical, og/twitter share image, site name, favicon, theme color — through the `pageMetas` field of `cma_UpdateOneWebHosting`, where a slot left out is kept and an empty string deletes the tag. Use when changing a live site's SEO or share tags, or its favicon/theme color, without rebuilding or re-uploading — available only on a WebHosting installed from a MarketApp.
 ---
 
 # Weegloo Deploy Website
@@ -99,6 +99,43 @@ does not, by default:
 > a guessed `.com` host breaks login. If you must create the `ServiceLogin` before the URL is known,
 > update `callbackUrl` once the WebHosting `url` is returned (full PUT `cma_UpdateOneServiceLogin`;
 > note `providers` is preserved and need not be resent). See `weegloo-service-login-client`.
+
+---
+
+## Editing the deployed pages' `<head>` metadata (`pageMetas`)
+
+A WebHosting **installed from a MarketApp** can have its `<head>` tags rewritten per document — title,
+description, canonical, share image, site name, favicon, theme color — with no rebuild and no
+re-upload. The editable documents are the ones listed in **`sys.originMetas`** (inventoried at install
+time, together with each page's original values). **A WebHosting deployed from your own ZIP has no
+such inventory, so meta editing is refused (`WGL422113`)** — and replacing the files with a new
+`upload` clears it.
+
+Send **`pageMetas`** on `cma_UpdateOneWebHosting` (PUT) or PATCH — one entry per document:
+
+```json
+{ "pageMetas": [ { "file": "index.html", "meta": { "title": "Acme", "image": "" } } ] }
+```
+
+**A slot has three states, not two:**
+
+| slot value | what happens to that tag |
+|---|---|
+| omitted, or `null` | left exactly as it is |
+| `""` (empty string) | the tag is removed |
+| a value | the tag is set to it — inserted if the page never had it |
+
+- Slots: `title`, `description`, `canonical`, `image`, `siteName`, `favicon`, `themeColor`. One slot
+  drives several tags — e.g. `title` writes `<title>`, `og:title` and `twitter:title`.
+- **Omitting `pageMetas` entirely changes nothing.** Unlike every other field of the PUT body it is
+  not wiped, and **an entry you send is merged over the stored one, slot by slot**, while documents you
+  leave out keep theirs. A partial edit is therefore safe — and `""` is the *only* way to clear a tag.
+- `file` must be one of the documents in `sys.originMetas` (`WGL400081` otherwise), each file may
+  appear once (`WGL400040`), and `pageMetas` **cannot ride along with a file-replacing `upload`**
+  in the same request (`WGL400082`).
+- Applying is **asynchronous**: the resource goes to `sys.state = PENDING`, a worker rewrites the HTML
+  and purges the CDN, then `COMPLETED`. Poll `cma_GetOneWebHosting`; a WebHosting still
+  `PENDING`/`PROCESSING` refuses further updates (`WGL422031`).
 
 ---
 
