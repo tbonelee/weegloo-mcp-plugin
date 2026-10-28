@@ -67,16 +67,18 @@ exact/prefix field).
 These are **platform-enforced bounds, not style advice**: a `ContentType` or `Content` write that
 exceeds one is **rejected**. Every number below counts **characters (string length), not bytes** —
 Hangul and other CJK characters count as **one** each. A value limit applies **per value**, i.e. to
-**each locale bucket** of a `localized: true` field, not to the sum across locales.
+**each locale bucket** of a `localized: true` field, not to the sum across locales — **except the
+last row**, which adds up the text of one whole `Content`: every field **and** every locale.
 
 | Limit | Max | What it bounds |
 |---|---|---|
 | **Fields per ContentType** | **80** | Field definitions a single `ContentType` may declare. |
 | **`ShortText`** value | **64** | Longer copy is **not** a ShortText with a looser validation — it must be **`LongText`** or **`RichText`**. |
 | **`LongText`** value | **5,120** | The only text type that is **full-text searchable** (via Advanced Search). |
-| **`RichText`** value | **204,800** | The largest text type — and it **supports no search of any kind**. |
+| **`RichText`** value | **20,480** | The largest text type — and it **supports no search of any kind**. |
 | **`Json`** value | **5,120** | Measured on the **serialized** JSON, not on key or entry count. |
 | **`Array`** items | **64** | Element count, whatever the element type (including `Refer`). |
+| **Text per `Content`** | **102,400** | Every `ShortText`, `LongText` and `RichText` value of one `Content` **added together** — all fields, **all locales**. `Json` and `Array` values do not count. |
 
 **What this forces on the design**
 
@@ -84,6 +86,10 @@ Hangul and other CJK characters count as **one** each. A value limit applies **p
   copy fits. Copy that can exceed **5,120** characters cannot be `LongText` however badly the product
   wants full-text search on it: it becomes **`RichText`** (and is then unsearchable), or it gets
   split across fields or entries.
+- **The text total is one budget for the whole `Content`.** Every text field in every locale draws
+  on the same **102,400**: a **20,480**-character `RichText` body in five locales has already spent
+  all of it, with nothing left for the title. Long copy multiplied by locales — or several long
+  bodies on one type — must be split across **entries**; splitting across fields does not help.
 - **A `size` validation can only tighten these, never raise them.** `{"size": {"max": 500}}` on a
   ShortText is a valid narrowing; `{"max": 5000}` does **not** buy a 5,000-character ShortText.
 - **A length you cannot verify or predict is not a `ShortText`.** Step 3 checks the copy, which only
