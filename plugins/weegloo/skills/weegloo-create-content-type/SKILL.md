@@ -270,6 +270,16 @@ chains, category parents, nav menus.
 | comment → post | `post` (Refer) | `postId` (ShortText) |
 | post → many related | `Array` of `Refer` | comma-joined ids in a `ShortText` |
 
+**A file the product lists, filters or searches is a Content that refers to a Media.** A Media
+exists only to hold the binary — its fields are fixed (`title`, `description`, `file`) and it has no
+ContentType — and product code never searches it (rule **`weegloo-api-endpoints`** → *Media — read by `sys.id` only*).
+So a member's file box, a gallery by kind or documents found by title get a wrapper ContentType: a
+`file` field (`Refer → Media`) beside the fields the product searches — a `kind`, a `title`
+(`LongText` if it is text-searched); the owner is already `sys.createdBy`. To guarantee a kind,
+restrict the Refer with `mediaMimetypeGroup` (one ContentType or field per kind;
+`references/field-validations.md`), or set `kind` from the file's MIME type when the row is created.
+Search the wrapper; fetch its Media by the id the Refer holds.
+
 **Denormalize only with a stated reason** — a deliberately frozen *snapshot at write time* (author
 name as it was, a cached count) or a performance-driven denormalized read. Default to the reference;
 make the snapshot the explicit exception, with the reason recorded. Don't reach for a flat id

@@ -174,7 +174,10 @@ only the follow-up Media-create plane differs by identity.
    wording. Don't hardcode a limit or blind-retry.
 4. Create the **Media** (or **WebHosting**) referencing `upload.sys.id` **before `expiresAt`**.
 5. For Media: wait until `sys.status === Published` (and file state clear) before using it from Content.
-6. Building product code? Use the REST Upload API. Agent uploading a local file in-chat? Use the
+6. Then write the Media's `sys.id` into the owning Content's `Refer → Media` field. That Refer is how
+   the product finds the file again — never a search over Media by title, file name or type (rule
+   **`weegloo-api-endpoints`** → *Media — read by `sys.id` only*).
+7. Building product code? Use the REST Upload API. Agent uploading a local file in-chat? Use the
    `weegloo-upload` MCP instead.
 
 ## Related

@@ -75,6 +75,9 @@ const DEFECT_AT = {
   // `3f1c697` is the merge just before develop's `a1ed2f1` tip: its api-endpoints rule still says
   // "RFC 6902 JSON Patch" with no word about the unsupported `test` op.
   'patch-no-test-op': '3f1c697',
+  // `d627b62` is develop's first-parent commit before `807ca33`, which is a tip of develop, latest
+  // and 1.22.1: its api-endpoints rule still teaches the CMA Media-list `mimeGroups` filter.
+  'media-read-by-id-only': 'd627b62',
 };
 
 const NOT_CORPUS = new Set(['FACT-OWNERS.md', 'GATE-INVENTORY.md']);

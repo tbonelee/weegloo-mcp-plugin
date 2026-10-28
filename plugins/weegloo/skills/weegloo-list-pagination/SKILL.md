@@ -1,13 +1,13 @@
 ---
 name: weegloo-list-pagination
-description: Weegloo list APIs return links.self, links.next, links.prev for pagination; combine with first-page query params (e.g. Media mimeGroups). Use for infinite scroll, “load more”, or iterating list endpoints.
+description: Weegloo list APIs return links.self, links.next, links.prev for pagination; combine with first-page query params (filters, select, order). Use for infinite scroll, “load more”, or iterating list endpoints.
 ---
 
 # Weegloo - list pagination via `links`
 
 ## When to use
 
-- Implementing **pagination**, **infinite scroll**, or **cursor-style “next page”** against any Weegloo **list** endpoint (medias, contents, space-memberships, etc.).
+- Implementing **pagination**, **infinite scroll**, or **cursor-style “next page”** against any Weegloo **list** endpoint (contents, space-memberships, etc.).
 - Explaining how to avoid hand-building `skip`/`offset` when the API already returns **ready-made query strings**.
 
 ## Response shape
@@ -17,7 +17,7 @@ Successful **list** responses include a **`links`** object (alongside **`items`*
 ```json
 {
   "links": {
-    "self": "/v1/spaces/rNwYZmRS/medias?limit=40&order=-sys.updatedAt&..."
+    "self": "/v1/spaces/rNwYZmRS/contents?limit=40&order=-sys.updatedAt&..."
   }
 }
 ```
@@ -36,7 +36,6 @@ Values are typically **relative** paths starting with **`/v1/...`** (not absolut
 
 1. **First request:** call the list endpoint with your desired **`limit`**, **`order`**, filters, **`select`**, etc. (see OpenAPI - base URLs in **`weegloo-api-endpoints`**).  
    - **`limit` max is 100 (default 15)** on every list endpoint; a larger value is rejected. This is the whole reason pagination exists: to read more than 100, **page through `links.next`** — never bump `limit` to 200/500/1000. The cap is enforced on the raw HTTP API, so clamp it in application code too. (Full param reference: https://docs.weegloo.com/api/reference/common/query-parameters)
-   - **Media (CMA):** to restrict e.g. to images or videos, add **`fields.file.{locale}.mimeGroups={MimeGroup}`** on this first URL (allowed values and examples: **`weegloo-api-endpoints`** rule → *CMA Media list — filter by `mimeGroups` (logical asset type)*).
 2. **Read** `items` (and optionally `totalCount`) from the JSON body.
 3. **Next page:** if **`links.next`** is present, issue **GET** to  
    **`{apiBase}{links.next}`**  
@@ -67,5 +66,5 @@ const url = new URL(nextPath, cmaBaseUrl).href
 
 ## Related
 
-- **API bases, Accept header, Media `mimeGroups` filter query:** **`weegloo-api-endpoints`** rule.
-- **Example — an image library grid:** its first-page medias URL carries **`fields.file.{locale}.mimeGroups=Image`**, and every further page comes from **`links.next`**.
+- **API bases, Accept header:** **`weegloo-api-endpoints`** rule.
+- **Example — a photo gallery grid:** page the gallery's own ContentType (e.g. `Photo`, with an `image` `Refer → Media`) through **`links.next`**, and fetch each page's images with one Media **`sys.id[in]`** read — the Media list itself is never searched (**`weegloo-api-endpoints`** rule → *Media — read by `sys.id` only*).

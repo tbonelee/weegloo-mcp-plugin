@@ -85,7 +85,6 @@ requires the constraint. Over-tightening them turns an ordinary upload into an u
 `Attachment` · `Plaintext` · `Image` · `Audio` · `Video` · `RichText` · `Presentation` ·
 `Spreadsheet` · `PdfDocument` · `Archive` · `Code` · `Markup`
 
-(The same identifiers are the values of the CMA Media-list `mimeGroups` filter.)
 `mediaImageDimensions` is meaningful only for image media — pairing it with a
 `mediaMimetypeGroup: ["Image"]` keeps the failure mode legible.
 

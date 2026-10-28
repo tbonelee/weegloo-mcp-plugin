@@ -86,7 +86,9 @@ and **`ContentType`** is **countable only** (`ResourceCount`; anything else is r
 within.** `ResourceCreate`, `ResourceFind`, `ResourceForEach` and `ResourceCount` each take
 **`contentType`** (`{ sys: { id } }`), **required** on `resource: "Content"` — omitting it is
 **rejected at save**, not an empty result at run time. There is no Space-wide Content search. Media
-is space-flat; the by-id statements carry a `target` instead.
+is space-flat; the by-id statements carry a `target` instead. Read a Media with `ResourceRead` on the
+id a Content's `Refer` holds, and never look one up with `ResourceFind` / `ResourceForEach` /
+`ResourceCount` — search the Content that refers to it (rule **`weegloo-api-endpoints`** → *Media — read by `sys.id` only*).
 
 ### Control flow
 

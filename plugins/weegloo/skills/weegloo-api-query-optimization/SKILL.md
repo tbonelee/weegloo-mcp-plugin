@@ -1,6 +1,6 @@
 ---
 name: weegloo-api-query-optimization
-description: Reading Weegloo Content/Media lists. `select` projection is the default on every read, your own cma_GetList* MCP calls included; sys.id[in] batching instead of N GETs; sys.version before PATCH/PUT; Media mimeGroups. Master/detail UIs (history list, gallery, inbox, sidebar→item), Refer→Media resolved to an image URL, /style1../style10 thumbnail/avatar resizing. SEARCH: in-memory vs server-side, and the X-Weegloo-Advanced-Search header required for any fields.* filter/order (MCP cannot send it). Use when fetching, listing or searching content/media, on an empty fields.* filter or a slow list. 목록 조회, 검색, 썸네일, 갤러리, 이미지 크기, 타임아웃.
+description: Reading Weegloo Content/Media lists. `select` projection is the default on every read, your own cma_GetList* MCP calls included; sys.id[in] batching instead of N GETs; sys.version before PATCH/PUT; Media read by sys.id only. Master/detail UIs (history list, gallery, inbox, sidebar→item), Refer→Media resolved to an image URL, /style1../style10 thumbnail/avatar resizing. SEARCH: in-memory vs server-side, and the X-Weegloo-Advanced-Search header required for any fields.* filter/order (MCP cannot send it). Use when fetching, listing or searching content/media, on an empty fields.* filter or a slow list. 목록 조회, 검색, 썸네일, 갤러리, 이미지 크기, 타임아웃.
 ---
 
 # Weegloo - query optimization for list APIs
@@ -145,12 +145,19 @@ Filter syntax (**`sys.id`**, **`sys.id[in]`**, delimiters) is defined per API in
 
 ---
 
-## 5. Media list: filter by logical type (`mimeGroups`)
+## 5. Media: read by `sys.id` only — search the Content
 
-Filter to one asset category server-side on CMA `GET .../spaces/{spaceId}/medias` with
-**`fields.file.{locale}.mimeGroups={MimeGroup}`**, not by listing every Media. The `{locale}` segment
-and the twelve allowed `MimeGroup` identifiers are in `weegloo-api-endpoints`
-(*CMA Media list — filter by `mimeGroups` (logical asset type)*) — always loaded, not repeated here.
+Product code never searches a Media — not by `title` / `description`, not by `mimeGroups`, not by
+any other field (rule **`weegloo-api-endpoints`** → *Media — read by `sys.id` only*). It reads a
+Media through an id it already holds — from the Content whose `Refer → Media` points at it, or from
+the create response right after an upload — as `…/medias/{id}`, one `sys.id[in]` read for many
+(§3), or `include` on the Content read.
+
+A file box or a gallery is therefore a list of the **wrapper Content**, filtered, ordered and paged
+on that Content's own fields (owner, kind, title), plus **one** `sys.id[in]` Media read per page for
+the files. Modelling the wrapper: **`weegloo-create-content-type`** (*Model relationships as Refer*).
+A Media's `title` / `description` are fine to display once fetched — console labels, never a search
+key.
 
 ---
 

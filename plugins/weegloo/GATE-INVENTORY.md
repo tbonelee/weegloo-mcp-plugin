@@ -51,7 +51,8 @@ wrong result?*
 - `never bind Administrator and never the first role in the list` — cma_GetListSpaceRoles returns Administrator first, so binding item[0] produces a token that works flawlessly and hands full write access to every browser visitor.
 - `a server-only env read is silently undefined in the browser` — The build succeeds and the page loads; the CDA token is simply undefined at runtime, surfacing as an empty site rather than a configuration error.
 - `must send Content-Type: application/json-patch+json` — A JSON Patch body sent as application/json is rejected or misinterpreted per operation, and the agent's instinct is to abandon PATCH for a full PUT that overwrites unrelated fields.
-- `The {locale} segment must match that space's fields.file locale key` — A wrong or missing locale segment is not an error — the filter is ignored or matches nothing, returning an empty Media list that reads as "no images in this Space".
+- `Never search a Media list:` — A Media search by title, description or mimeGroups works on day one — the one file uploaded so far matches — then breaks with no error: a second file shares the label, an editor renames one in the console, or another feature's files land in the same Space-wide list. Until this line replaced it, this rule taught the mimeGroups half as the right way to build a gallery.
+- `Searchable metadata (owner, kind, title) belongs on a Content` — With the prohibition alone the agent pulls the whole Media list and filters it in memory, or keeps searching Media under another field; this half sends it to a ContentType that refers to the Media — the one shape that is both searchable and stable.
 
 ## weegloo-default-locale
 

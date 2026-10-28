@@ -232,7 +232,7 @@ echo "--- 신규 statement ---";  comm -13 /tmp/spec-sync-ta.txt /tmp/spec-sync-
 | Script statement 타입 | `core/.../script/IStatement.kt` `@JsonSubTypes` | 위 |
 | Webhook topic 목록 | 토픽 enum / `hook-design.md` | 구독 가능한 이벤트가 바뀜 |
 | 필드 타입·validation 종류 | ContentType 필드 enum | 모델링 지침이 바뀜 |
-| `MimeGroup`, 권한 action/filter enum | 각 enum 정의 | 룰이 값을 직접 인용함 |
+| `MimeGroup`, 권한 action/filter enum | 각 enum 정의 | 스킬·룰이 값을 직접 인용함 (`MimeGroup` → `weegloo-create-content-type` 의 `references/field-validations.md`) |
 | 플랫폼 상한 기본값 | `core/.../CoreProperties.kt` | 스킬이 숫자를 박아둔 곳 |
 
 `core/docs/script-definition-syntax.md`(+ `script-definition-samples.md`)는 이 축들의
